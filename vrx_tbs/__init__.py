@@ -2,6 +2,7 @@
 import logging
 import serial
 from RHRace import WinCondition
+import RHUtils
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
 
 logger = logging.getLogger(__name__)
@@ -137,54 +138,63 @@ class TBSController(VRxController):
         Set up output objects
         '''
 
+        LAP_HEADER = 'L'
+        POS_HEADER = 'P'
+        
         osd = {
-            'position': int(result['position'] or 0),
+            'position_prefix': POS_HEADER,
+            'position': str(result['position']),
             'callsign': result['callsign'],
-            'lap_number': 0,
+            'lap_prefix': LAP_HEADER,
+            'lap_number': '',
             'last_lap_time': '',
-            'last_lap_raw': 0,
             'total_time': result['total_time'],
             'total_time_laps': result['total_time_laps'],
-            'total_time_laps_raw': int(result['total_time_laps_raw'] or 0),
-            'consecutives_raw': int(result['consecutives_raw'] or 0),
+            'consecutives': result['consecutives'],
             'is_best_lap': is_best_lap,
         }
 
         if result['laps']:
-            osd['lap_number'] = int(result['laps'] or 0)
-            osd['last_lap_raw'] = int(result['last_lap_raw'] or 0)
+            osd['lap_number'] = str(result['laps'])
+            osd['last_lap_time'] = result['last_lap']
         else:
-            osd['lap_number'] = 0 # HS
-            osd['last_lap_raw'] = int(result['total_time_raw'] or 0)
+            osd['lap_prefix'] = ''
+            osd['lap_number'] = 0 #self.Language.__('HS')
+            osd['last_lap_time'] = result['total_time']
             osd['is_best_lap'] = False
 
         if next_rank_split:
             osd_next_split = {
-                'position': int(next_rank_split_result['position'] or 0),
+                'position_prefix': POS_HEADER,
+                'position': str(next_rank_split_result['position']),
                 'callsign': next_rank_split_result['callsign'],
-                'split_time_raw': int(next_rank_split),
+                'split_time': RHUtils.time_format(next_rank_split, self.RHData.get_option('timeFormat')),
             }
 
             osd_next_rank = {
-                'position': int(next_rank_split_result['position'] or 0),
+                'position_prefix': POS_HEADER,
+                'position': str(next_rank_split_result['position']),
                 'callsign': next_rank_split_result['callsign'],
-                'lap_number': 0,
-                'last_lap_raw': 0,
+                'lap_prefix': LAP_HEADER,
+                'lap_number': '',
+                'last_lap_time': '',
                 'total_time': result['total_time'],
             }
 
             if next_rank_split_result['laps']:
-                osd_next_rank['lap_number'] = int(next_rank_split_result['laps'] or 0)
-                osd_next_rank['last_lap_raw'] = int(next_rank_split_result['last_lap_raw'] or 0)
+                osd_next_rank['lap_number'] = str(next_rank_split_result['laps'])
+                osd_next_rank['last_lap_time'] = next_rank_split_result['last_lap']
             else:
-                osd_next_rank['lap_number'] = 0 # HS
-                osd_next_rank['last_lap_raw'] = int(next_rank_split_result['total_time_raw'] or 0)
+                osd_next_rank['lap_prefix'] = ''
+                osd_next_rank['lap_number'] = 0 #self.Language.__('HS')
+                osd_next_rank['last_lap_time'] = next_rank_split_result['total_time']
 
         if first_rank_split:
             osd_first_split = {
-                'position': int(first_rank_split_result['position'] or 0),
+                'position_prefix': POS_HEADER,
+                'position': str(first_rank_split_result['position']),
                 'callsign': first_rank_split_result['callsign'],
-                'split_time_raw': int(first_rank_split or 0)
+                'split_time': RHUtils.time_format(first_rank_split, self.RHData.get_option('timeFormat')),
             }
 
         '''
@@ -192,11 +202,11 @@ class TBSController(VRxController):
         '''
 
         osdCrosserData = OSDData(
-            osd['position'], 
-            osd['lap_number'], 
-            osd['last_lap_raw'], 
-            0,
-            osd['callsign'][:10]
+            int(str(osd['position'])), 
+            int(str(osd['lap_number'])), 
+            'LAP ' + osd['last_lap_time'],
+            '',
+            '',
         )
 
         # "Pos-Callsign L[n]|0:00:00"
@@ -205,20 +215,22 @@ class TBSController(VRxController):
         if win_condition == WinCondition.FASTEST_3_CONSECUTIVE:
             # "Pos-Callsign L[n]|0:00:00 | #/0:00.000" (current | best consecutives)
             if result['laps'] >= 3:
-                osdCrosserData.last_lap_ms = osd['consecutives_raw']
+                osdCrosserData.text1 = '3/' + osd['consecutives']
+                osdCrosserData.text2 = osd['last_lap_time']
             elif result['laps'] == 2:
-                osdCrosserData.last_lap_ms = osd['total_time_laps_raw']
+                osdCrosserData.text1 = '2/' + osd['total_time_laps']
+                osdCrosserData.text2 = osd['last_lap_time']
 
         elif win_condition == WinCondition.FASTEST_LAP:
             if next_rank_split:
                 # pilot in 2nd or lower
                 # "Pos-Callsign L[n]|0:00:00 / +0:00.000 Callsign"
-                osdCrosserData.last_lap_ms = osd_next_split['split_time_raw']
-                osdCrosserData.freetext = '+' + osd_next_split['callsign'][:10]
+                osdCrosserData.text3 = 'P' + osd_next_split['position'] + ' +' + osd_next_split['split_time']
+                osdCrosserData.text3 = '  ' + osd_next_split['callsign']
             elif osd['is_best_lap']:
                 # pilot in 1st and is best lap
                 # "Pos:Callsign L[n]:0:00:00 / Best"
-                osdCrosserData.freetext = self.Language.__('Best Lap')
+                osdCrosserData.text3 = self.Language.__('Best Lap')
         else:
             # WinCondition.MOST_LAPS
             # WinCondition.FIRST_TO_LAP_X
@@ -226,33 +238,15 @@ class TBSController(VRxController):
 
             # "Pos-Callsign L[n]|0:00:00 / +0:00.000 Callsign"
             if next_rank_split:
-                osdCrosserData.last_lap_ms = osd_next_split['split_time_raw']
-                osdCrosserData.freetext = '+' + osd_next_split['callsign'][:10]
+                osdCrosserData.text2 = 'P' + osd_next_split['position'] + ' +' + osd_next_split['split_time']
+                osdCrosserData.text3 = '  ' + osd_next_split['callsign']
 
         # send message to crosser
         seat_dest = seat_index
-        # TODO: set address
+        # TODO: get address
 
-        data = bytearray()
-        data.extend(cmd.to_bytes(1, 'big'))
-        data.extend(address.to_bytes(6, 'big'))
-        data.extend(osdCrosserData.position.to_bytes(4, 'big'))
-        data.extend(osdCrosserData.lap_number.to_bytes(4, 'big'))
-        data.extend(osdCrosserData.current_lap_ms.to_bytes(4, 'big'))
-        data.extend(osdCrosserData.last_lap_ms.to_bytes(4, 'big'))
-        data.extend(str.encode(osdCrosserData.freetext[:32]))
-
-        payload = bytearray()
-        payload.extend(0x00.to_bytes(1, 'big'))
-        payload.extend(len(data).to_bytes(1, 'big'))
-        payload.extend(data)
-        payload.extend(0xFF.to_bytes(1, 'big'))
-
-        self.ser.open()
-        self.ser.write(payload)
-        self.ser.close()
-
-        logger.debug('tbs n{1}: {0}'.format(data, seat_dest))
+        self.sendLapMessage(address, osdCrosserData)
+        logger.debug('tbs n{1}: {0}'.format(osdCrosserData, seat_dest))
 
         '''
         # show split when next pilot crosses
@@ -271,9 +265,9 @@ class TBSController(VRxController):
                 osdSplitData = OSDData(
                     osd_next_rank['position'], 
                     osd_next_rank['lap_number'], 
-                    osd_next_rank['last_lap_raw'], 
-                    osd_next_split['split_time_raw'],
-                    '-' + osd_next_rank['callsign'][:10]
+                    'LAP ' + osd_next_rank['last_lap_raw'],
+                    'P' + osd_next_rank['position'] + ' -' + osd_next_split['split_time'],
+                    '-' + osd_next_rank['callsign']
                 )
 
                 # "Pos-Callsign L[n]|0:00:00"
@@ -283,29 +277,31 @@ class TBSController(VRxController):
                 # message += ' / -' + osd_next_split['split_time'] + ' ' + osd['callsign'][:10]
 
                 seat_dest = leaderboard[rank_index - 1]['node']
-                # TODO: set address
+                # TODO: get address
 
-                data = bytearray()
-                data.extend(cmd.to_bytes(1, 'big'))
-                data.extend(address.to_bytes(6, 'big'))
-                data.extend(osdSplitData.position.to_bytes(4, 'big'))
-                data.extend(osdSplitData.lap_number.to_bytes(4, 'big'))
-                data.extend(osdSplitData.current_lap_ms.to_bytes(4, 'big'))
-                data.extend(osdSplitData.last_lap_ms.to_bytes(4, 'big'))
-                data.extend(str.encode(osdSplitData.freetext[:32]))
-
-                payload = bytearray()
-                payload.extend(0x00.to_bytes(1, 'big'))
-                payload.extend(len(data).to_bytes(1, 'big'))
-                payload.extend(data)
-                payload.extend(0xFF.to_bytes(1, 'big'))
-
-                self.ser.open()
-                self.ser.write(payload)
-                self.ser.close()
-
-                logger.debug('tbs n{1}: {0}'.format(data, seat_dest))
+                self.sendLapMessage(address, osdCrosserData)
+                logger.debug('tbs n{1}: {0}'.format(osdCrosserData, seat_dest))
         '''
+
+    def sendLapMessage(self, address, osdData):
+        data = bytearray()
+        data.extend(TBSCommand.LAP_DATA.to_bytes(1, 'big'))
+        data.extend(address.to_bytes(6, 'big'))
+        data.extend(osdData.pos.to_bytes(1, 'big'))
+        data.extend(osdData.lap.to_bytes(1, 'big'))
+        data.extend(str.encode('{:<15}'.format(str(osdData.text1)[:15])))
+        data.extend(str.encode('{:<15}'.format(str(osdData.text2)[:15])))
+        data.extend(str.encode('{:<20}'.format(str(osdData.text3)[:20])))
+
+        payload = bytearray()
+        payload.extend(0x00.to_bytes(1, 'big'))
+        payload.extend(len(data).to_bytes(1, 'big'))
+        payload.extend(data)
+        payload.extend(0xFF.to_bytes(1, 'big'))
+
+        self.ser.open()
+        self.ser.write(payload)
+        self.ser.close()
 
 class TBSCommand():
     READY_HEAT = 0x00
@@ -313,9 +309,9 @@ class TBSCommand():
     LAP_DATA = 0x10
 
 class OSDData():
-    def __init__(self, position, lap_number, current_lap_ms, last_lap_ms, freetext):
-        self.position = position
-        self.lap_number = lap_number
-        self.current_lap_ms = current_lap_ms
-        self.last_lap_ms = last_lap_ms
-        self.freetext = freetext
+    def __init__(self, pos, lap, text1, text2, text3):
+        self.pos = pos
+        self.lap = lap
+        self.text1 = text1 #15
+        self.text2 = text2 #15
+        self.text3 = text3 #20

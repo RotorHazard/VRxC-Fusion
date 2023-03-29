@@ -18,15 +18,13 @@ uint32_t x = 0;
 // REPLACE WITH YOUR RECEIVER MAC Address
 uint8_t broadcastAddress[] = {0x48, 0x3F, 0xDA, 0x49, 0xA6, 0xB9};
 
-// Structure example to send data
-// Must match the receiver structure
 typedef struct struct_message {
-  uint32_t seat_position;
-  uint32_t lap_number;
-  uint32_t current_lap_time;
-  uint32_t last_lap_time;
-  uint32_t nanumber;
-  char freetext[32];
+  uint8_t command=0x22; 
+  uint8_t pos;
+  uint8_t lap;
+  char text1[15];
+  char text2[15];
+  char text3[20];
 } struct_message;
 
 // Create a struct_message called myData
@@ -39,17 +37,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
   #ifdef OLED
-    u8x8.clear();
-    u8x8.draw2x2String(0, 0, status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
-    u8x8.drawString(0, 2, myData.freetext);
-    u8x8.setCursor(0, 3);
-    u8x8.print(myData.seat_position);
-    u8x8.setCursor(0, 4);
-    u8x8.print(myData.lap_number);
-    u8x8.setCursor(0, 5);
-    u8x8.print(myData.current_lap_time);
-    u8x8.setCursor(0, 6);
-    u8x8.print(myData.last_lap_time);
+    u8x8.draw2x2String(0, 6, status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
   #endif
 }
  
@@ -141,8 +129,9 @@ void handleCommand() {
     newData = false;
 
     #ifdef OLED
+      u8x8.setCursor(0, 0);
       u8x8.print("process");
-    #endif
+    #endif      
 
     for (byte n = 0; n < numReceived; n++) {
       Serial.print(receivedBytes[n], HEX);
@@ -154,18 +143,50 @@ void handleCommand() {
       rcvAddress[n] = receivedBytes[n+2];
     }
     
-    myData.seat_position = ((long)receivedBytes[8] << 24 | (long)receivedBytes[9] << 16 | (long)receivedBytes[10] << 8 | receivedBytes[11]);
-    myData.lap_number = ((long)receivedBytes[12] << 24 | (long)receivedBytes[13] << 16 | (long)receivedBytes[14] << 8 | receivedBytes[15]);
-    myData.current_lap_time = ((long)receivedBytes[16] << 24 | (long)receivedBytes[17] << 16 | (long)receivedBytes[18] << 8 | receivedBytes[19]);
-    myData.last_lap_time = ((long)receivedBytes[20] << 24 | (long)receivedBytes[21] << 16 | (long)receivedBytes[22] << 8 | receivedBytes[23]);
-
-    for(byte n = 0; n < numReceived - 23; n++) {
-      freetextStr[n] = receivedBytes[n+24];
+    myData.pos = receivedBytes[8];
+    Serial.println(myData.pos);
+    myData.lap = receivedBytes[9];
+    Serial.println(myData.lap);
+    for(byte n = 0; n < 15; n++) {
+      myData.text1[n] = receivedBytes[n+10];
     }
-    Serial.println(freetextStr);
-    strcpy(myData.freetext, "");
-    strncpy(myData.freetext, freetextStr, strlen(freetextStr));
-     
+    Serial.println(myData.text1);
+    for(byte n = 0; n < 15; n++) {
+      myData.text2[n] = receivedBytes[n+25];
+    }
+    Serial.println(myData.text2);
+    for(byte n = 0; n < 20; n++) {
+      myData.text3[n] = receivedBytes[n+40];
+    }
+    Serial.println(myData.text3);
+
+    #ifdef OLED
+      u8x8.clear();
+      u8x8.setCursor(0, 0);
+      Serial.print('pos: ');
+      u8x8.print(myData.pos);
+      u8x8.setCursor(0, 1);
+      Serial.print('lap: ');
+      u8x8.print(myData.lap);
+      u8x8.setCursor(0, 2);
+      for(byte n = 0; n < 15; n++) {
+        u8x8.print(myData.text1[n]);
+      }    
+      u8x8.setCursor(0, 3);
+      for(byte n = 0; n < 15; n++) {
+        u8x8.print(myData.text2[n]);
+      }
+      u8x8.setCursor(0, 4);
+      for(byte n = 0; n < 16; n++) {
+        u8x8.print(myData.text3[n]);
+      }
+      u8x8.setCursor(0, 5);
+      u8x8.print("mac:");
+      for(byte n = 0; n < 6; n++) {
+        u8x8.print(rcvAddress[n], HEX);
+      }
+    #endif
+
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(rcvAddress, (uint8_t *) &myData, sizeof(myData));
      
@@ -174,6 +195,9 @@ void handleCommand() {
     }
     else {
       Serial.println("Error sending the data");
+      #ifdef OLED
+        u8x8.draw2x2String(0, 6, "Error");     
+      #endif      
     }
   }
 }  
