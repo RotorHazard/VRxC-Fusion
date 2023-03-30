@@ -163,10 +163,10 @@ void handleCommand() {
     #ifdef OLED
       u8x8.clear();
       u8x8.setCursor(0, 0);
-      Serial.print('pos: ');
+      u8x8.print("Pos: ");
       u8x8.print(myData.pos);
       u8x8.setCursor(0, 1);
-      Serial.print('lap: ');
+      u8x8.print("Lap: ");
       u8x8.print(myData.lap);
       u8x8.setCursor(0, 2);
       for(byte n = 0; n < 15; n++) {
