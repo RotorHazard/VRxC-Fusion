@@ -1,6 +1,7 @@
 
 import logging
 import serial
+import serial.tools.list_ports
 from RHRace import WinCondition
 import RHUtils
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
@@ -25,10 +26,39 @@ class TBSController(VRxController):
 
     def onStartup(self, _args):
         self.ser.baudrate = 115200
-        self.ser.port = 'COM3'
+
+        # Find port for TBS comms device
+        port = self.RHData.get_option('tbs_comms_port', None)
+        if port:
+            self.ser.port = port
+        else:
+            # Automatic port discovery
+            logger.debug("Finding serial port for TBS comms device")
+            
+            payload = bytearray()
+            payload.extend(0x00.to_bytes(1, 'big'))
+            payload.extend(0x01.to_bytes(1, 'big'))
+            payload.extend(TBSCommand.IDENTIFY.to_bytes(1, 'big'))
+            payload.extend(0xFF.to_bytes(1, 'big'))
+
+            ports = list(serial.tools.list_ports.comports())
+            self.ser.timeout = 1
+
+            for p in ports:
+                self.ser.port = p.device
+                self.ser.open()
+                self.ser.write(payload)
+                response = self.ser.read(10)
+                if response.decode()[:10] == "Fusion ESP":
+                    logger.info("Found Fusion comms module at {}".format(p.device))
+                    self.ser.port = p.device
+                    self.ser.close()
+                    break
+                else:
+                    logger.debug("No Fusion comms module at {} (got {})".format(p.device, response))
+                self.ser.close()
 
     def onRaceLapRecorded(self, args):
-        cmd = TBSCommand.LAP_DATA
         address = 0x483fda49a6b9
 
         if 'node_index' in args:
@@ -138,8 +168,8 @@ class TBSController(VRxController):
         Set up output objects
         '''
 
-        LAP_HEADER = 'L'
-        POS_HEADER = 'P'
+        LAP_HEADER = self.RHData.get_option('osd_lapHeader')
+        POS_HEADER = self.RHData.get_option('osd_positionHeader')
         
         osd = {
             'position_prefix': POS_HEADER,
@@ -285,7 +315,7 @@ class TBSController(VRxController):
 
     def sendLapMessage(self, address, osdData):
         data = bytearray()
-        data.extend(TBSCommand.LAP_DATA.to_bytes(1, 'big'))
+        data.extend(TBSCommand.DISPLAY_DATA.to_bytes(1, 'big'))
         data.extend(address.to_bytes(6, 'big'))
         data.extend(osdData.pos.to_bytes(1, 'big'))
         data.extend(osdData.lap.to_bytes(1, 'big'))
@@ -304,9 +334,8 @@ class TBSController(VRxController):
         self.ser.close()
 
 class TBSCommand():
-    READY_HEAT = 0x00
-    JOIN_ADDRESS = 0x01
-    LAP_DATA = 0x10
+    IDENTIFY = 0x01
+    DISPLAY_DATA = 0x10
 
 class OSDData():
     def __init__(self, pos, lap, text1, text2, text3):
