@@ -17,7 +17,9 @@ def registerHandlers(args):
 
 def initialize(**kwargs):
     if 'Events' in kwargs:
-        kwargs['Events'].on('VRxC_Initialize', 'VRx_register_tbs', registerHandlers, {}, 75, True)
+        kwargs['Events'].on('VRxC_Initialize', 'VRx_register_tbs', registerHandlers, {}, 75)
+    if 'RHUI' in kwargs:
+        kwargs['RHUI'].register_pilot_attribute("mac", "Fusion MAC Address", "text")
 
 class TBSController(VRxController):
     def __init__(self, name, label):
@@ -34,12 +36,12 @@ class TBSController(VRxController):
         else:
             # Automatic port discovery
             logger.debug("Finding serial port for TBS comms device")
-            
+
             payload = bytearray()
-            payload.extend(0x00.to_bytes(1, 'big'))
-            payload.extend(0x01.to_bytes(1, 'big'))
-            payload.extend(TBSCommand.IDENTIFY.to_bytes(1, 'big'))
-            payload.extend(0xFF.to_bytes(1, 'big'))
+            payload.extend(0x00.to_bytes(1, 'big')) # Packet start
+            payload.extend(0x01.to_bytes(1, 'big')) # Packet length
+            payload.extend(TBSCommand.IDENTIFY.to_bytes(1, 'big')) # Packet data
+            payload.extend(0xFF.to_bytes(1, 'big')) # Packet terminate
 
             ports = list(serial.tools.list_ports.comports())
             self.ser.timeout = 1
@@ -53,14 +55,14 @@ class TBSController(VRxController):
                     logger.info("Found Fusion comms module at {}".format(p.device))
                     self.ser.port = p.device
                     self.ser.close()
-                    break
+                    return
                 else:
                     logger.debug("No Fusion comms module at {} (got {})".format(p.device, response))
                 self.ser.close()
 
-    def onRaceLapRecorded(self, args):
-        address = 0x483fda49a6b9
+        logger.warning("No Fusion comms module discovered")
 
+    def onRaceLapRecorded(self, args):
         if 'node_index' in args:
             seat_index = args['node_index']
         else:
@@ -172,6 +174,7 @@ class TBSController(VRxController):
         POS_HEADER = self.RHData.get_option('osd_positionHeader')
         
         osd = {
+            'pilot_id': result['pilot_id'],
             'position_prefix': POS_HEADER,
             'position': str(result['position']),
             'callsign': result['callsign'],
@@ -202,6 +205,7 @@ class TBSController(VRxController):
             }
 
             osd_next_rank = {
+                'pilot_id': next_rank_split_result['pilot_id'],
                 'position_prefix': POS_HEADER,
                 'position': str(next_rank_split_result['position']),
                 'callsign': next_rank_split_result['callsign'],
@@ -272,13 +276,12 @@ class TBSController(VRxController):
                 osdCrosserData.text3 = '  ' + osd_next_split['callsign']
 
         # send message to crosser
-        seat_dest = seat_index
-        # TODO: get address
+        address = self.RHData.get_pilot_attribute_value(osd['pilot_id'], 'mac')
+        if address:
+            address = int(address, 16)
+            self.sendLapMessage(address, osdCrosserData)
+            logger.debug('VRxC Fusion: Lap/Pilot {}/Mac {}'.format(osd['pilot_id'], hex(address)))
 
-        self.sendLapMessage(address, osdCrosserData)
-        logger.debug('tbs n{1}: {0}'.format(osdCrosserData, seat_dest))
-
-        '''
         # show split when next pilot crosses
         if next_rank_split:
             if win_condition == WinCondition.FASTEST_3_CONSECUTIVE or win_condition == WinCondition.FASTEST_LAP:
@@ -295,7 +298,7 @@ class TBSController(VRxController):
                 osdSplitData = OSDData(
                     osd_next_rank['position'], 
                     osd_next_rank['lap_number'], 
-                    'LAP ' + osd_next_rank['last_lap_raw'],
+                    'LAP ' + osd_next_rank['last_lap_time'],
                     'P' + osd_next_rank['position'] + ' -' + osd_next_split['split_time'],
                     '-' + osd_next_rank['callsign']
                 )
@@ -306,12 +309,11 @@ class TBSController(VRxController):
                 # "Pos-Callsign L[n]|0:00:00 / -0:00.000 Callsign"
                 # message += ' / -' + osd_next_split['split_time'] + ' ' + osd['callsign'][:10]
 
-                seat_dest = leaderboard[rank_index - 1]['node']
-                # TODO: get address
-
-                self.sendLapMessage(address, osdCrosserData)
-                logger.debug('tbs n{1}: {0}'.format(osdCrosserData, seat_dest))
-        '''
+                address = self.RHData.get_pilot_attribute_value(osd_next_rank['pilot_id'], 'mac')
+                if address:
+                    address = int(address, 16)
+                    self.sendLapMessage(address, osdCrosserData)
+                    logger.debug('VRxC Fusion: Split/Pilot {}/Mac {}'.format(osd_next_rank['pilot_id'], hex(address)))
 
     def sendLapMessage(self, address, osdData):
         data = bytearray()
@@ -324,10 +326,10 @@ class TBSController(VRxController):
         data.extend(str.encode('{:<20}'.format(str(osdData.text3)[:20])))
 
         payload = bytearray()
-        payload.extend(0x00.to_bytes(1, 'big'))
-        payload.extend(len(data).to_bytes(1, 'big'))
-        payload.extend(data)
-        payload.extend(0xFF.to_bytes(1, 'big'))
+        payload.extend(0x00.to_bytes(1, 'big')) # Packet start
+        payload.extend(len(data).to_bytes(1, 'big')) # Packet length
+        payload.extend(data) # Packet data
+        payload.extend(0xFF.to_bytes(1, 'big')) # Packet terminate
 
         self.ser.open()
         self.ser.write(payload)
