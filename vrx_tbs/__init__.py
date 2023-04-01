@@ -2,6 +2,7 @@
 import logging
 import serial
 import serial.tools.list_ports
+import time
 from RHRace import WinCondition
 import RHUtils
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
@@ -50,6 +51,7 @@ class TBSController(VRxController):
                 self.ser.port = p.device
                 self.ser.open()
                 self.ser.write(payload)
+                time.sleep(0.1)
                 response = self.ser.read(10)
                 if response.decode()[:10] == "Fusion ESP":
                     logger.info("Found Fusion comms module at {}".format(p.device))
@@ -260,7 +262,7 @@ class TBSController(VRxController):
                 # pilot in 2nd or lower
                 # "Pos-Callsign L[n]|0:00:00 / +0:00.000 Callsign"
                 osdCrosserData.text3 = 'P' + osd_next_split['position'] + ' +' + osd_next_split['split_time']
-                osdCrosserData.text3 = '  ' + osd_next_split['callsign']
+                osdCrosserData.text3 = ' ' + osd_next_split['callsign']
             elif osd['is_best_lap']:
                 # pilot in 1st and is best lap
                 # "Pos:Callsign L[n]:0:00:00 / Best"
@@ -273,12 +275,12 @@ class TBSController(VRxController):
             # "Pos-Callsign L[n]|0:00:00 / +0:00.000 Callsign"
             if next_rank_split:
                 osdCrosserData.text2 = 'P' + osd_next_split['position'] + ' +' + osd_next_split['split_time']
-                osdCrosserData.text3 = '  ' + osd_next_split['callsign']
+                osdCrosserData.text3 = ' ' + osd_next_split['callsign']
 
         # send message to crosser
         address = self.RHData.get_pilot_attribute_value(osd['pilot_id'], 'mac')
         if address:
-            address = int(address, 16)
+            address = int(address.strip()[:12], 16)
             self.sendLapMessage(address, osdCrosserData)
             logger.debug('VRxC Fusion: Lap/Pilot {}/Mac {}'.format(osd['pilot_id'], hex(address)))
 
@@ -294,7 +296,6 @@ class TBSController(VRxController):
                 # WinCondition.NONE
 
                 # update pilot ahead with split-behind
-
                 osdSplitData = OSDData(
                     osd_next_rank['position'], 
                     osd_next_rank['lap_number'], 
@@ -311,7 +312,7 @@ class TBSController(VRxController):
 
                 address = self.RHData.get_pilot_attribute_value(osd_next_rank['pilot_id'], 'mac')
                 if address:
-                    address = int(address, 16)
+                    address = int(address.strip()[:12], 16)
                     self.sendLapMessage(address, osdCrosserData)
                     logger.debug('VRxC Fusion: Split/Pilot {}/Mac {}'.format(osd_next_rank['pilot_id'], hex(address)))
 
@@ -321,9 +322,9 @@ class TBSController(VRxController):
         data.extend(address.to_bytes(6, 'big'))
         data.extend(osdData.pos.to_bytes(1, 'big'))
         data.extend(osdData.lap.to_bytes(1, 'big'))
-        data.extend(str.encode('{:<15}'.format(str(osdData.text1)[:15])))
-        data.extend(str.encode('{:<15}'.format(str(osdData.text2)[:15])))
-        data.extend(str.encode('{:<20}'.format(str(osdData.text3)[:20])))
+        data.extend(str.encode('{:<14}\0'.format(str(osdData.text1)[:14])))
+        data.extend(str.encode('{:<14}\0'.format(str(osdData.text2)[:14])))
+        data.extend(str.encode('{:<19}\0'.format(str(osdData.text3)[:19])))
 
         payload = bytearray()
         payload.extend(0x00.to_bytes(1, 'big')) # Packet start
