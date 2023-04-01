@@ -7,6 +7,8 @@
 #define IDENTIFY 0x01
 #define DISPLAY_DATA 0x10
 
+#define MAX_RETRY 5
+
 #ifdef OLED
   #include <U8g2lib.h>
   #include <U8x8lib.h>
@@ -14,8 +16,10 @@
   U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ 15, /* data=*/ 4, /* reset=*/ 16);
 #endif
 
+// data structure
+byte rcvAddress[6];
 typedef struct struct_message {
-  uint8_t command=0x22; 
+  uint8_t cc = 0x22;
   uint8_t pos;
   uint8_t lap;
   char text1[15];
@@ -23,21 +27,48 @@ typedef struct struct_message {
   char text3[20];
 } struct_message;
 
-// Create a struct_message called myData
-struct_message myData;
+struct_message fusionOsdFrame;
 
 esp_now_peer_info_t peerInfo;
 
+uint8_t tries;
+
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  #ifdef SERIALDEBUG
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-  #endif
-  #ifdef OLED
-  u8x8.setCursor(0, 0);
-    u8x8.print(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
-  #endif
+  tries++;
+  if (status == ESP_NOW_SEND_SUCCESS) {
+    esp_now_del_peer(mac_addr);
+    #ifdef SERIALDEBUG
+      Serial.print("Last Packet Send Status:\t");
+      Serial.println("Delivery Success");
+    #endif
+    #ifdef OLED
+      u8x8.setCursor(0, 0);
+      u8x8.print("Success / ");
+      u8x8.print(tries);
+    #endif
+  } else {
+    if (tries <= MAX_RETRY) {
+      #ifdef SERIALDEBUG
+        Serial.print("Last Packet Send Status:\t");
+        Serial.println("Delivery Fail");
+      #endif   
+      #ifdef OLED
+        u8x8.setCursor(0, 0);
+        u8x8.print("Fail / ");
+        u8x8.print(tries);
+      #endif
+      esp_now_send(mac_addr, (uint8_t *) &fusionOsdFrame, sizeof(fusionOsdFrame));
+    } else {
+      esp_now_del_peer(mac_addr);
+      #ifdef SERIALDEBUG
+        Serial.println("No more retries");
+      #endif
+      #ifdef OLED
+        u8x8.print("*");
+      #endif        
+    }
+  }
 }
 
 void setup() {
@@ -46,7 +77,16 @@ void setup() {
  
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
-
+  /*
+  WiFi.softAP("RACE_SERVER", "", 1, 0, 4, false);
+  #ifdef SERIALDEBUG
+    Serial.print("Station IP Address: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Wi-Fi Channel: ");
+    Serial.println(WiFi.channel());
+  #endif
+  */
+  
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
@@ -57,8 +97,9 @@ void setup() {
   // get the status of Trasnmitted packet
   esp_now_register_send_cb(OnDataSent);
   
-  // Register peer
-  peerInfo.channel = 0;  
+  // Start peer config
+  // Set peer
+  peerInfo.channel = 1;  
   peerInfo.encrypt = false;
   
   #ifdef OLED
@@ -68,11 +109,10 @@ void setup() {
   #endif
 }
 
-const byte numBytes = 255;
-byte receivedBytes[numBytes];
+const byte maxBytes = 255;
+byte receivedBytes[maxBytes];
 byte numReceived = 0;
 boolean newData = false;
-char freetextStr[32];
 
 void recvBytes() {
     static boolean recvInProgress = false;
@@ -91,12 +131,11 @@ void recvBytes() {
             if (dataLen == 0 || ndx < dataLen + 1) {
                 receivedBytes[ndx] = rb;
                 ndx++;
-                if (ndx >= numBytes) {
-                    ndx = numBytes - 1;
+                if (ndx >= maxBytes) {
+                    ndx = maxBytes - 1;
                 }
             }
             else {
-                receivedBytes[ndx] = '\0'; // terminate the string
                 recvInProgress = false;
                 numReceived = ndx;  // save the number for use when printing
                 ndx = 0;
@@ -108,13 +147,11 @@ void recvBytes() {
         else if (rb == 0x00) {
             recvInProgress = true;
             #ifdef OLED
-              u8x8.print("receive");
+              u8x8.print("--receive--");
             #endif
         }
     }
 }
-
-byte rcvAddress[6];
 
 void handleCommand() {
   if (newData == true) {
@@ -127,25 +164,30 @@ void handleCommand() {
     if (receivedBytes[1] == IDENTIFY) {
       Serial.println(F("Fusion ESP"));
       #ifdef OLED
-        u8x8.print("Identify");
+        u8x8.print(F("Identify"));
       #endif        
     } else if (receivedBytes[1] == DISPLAY_DATA) {
       for(byte n = 0; n < 6; n++) {
         rcvAddress[n] = receivedBytes[n+2];
       }
 
-      myData.pos = receivedBytes[8];
-      myData.lap = receivedBytes[9];
+      fusionOsdFrame.pos = receivedBytes[8];
+      fusionOsdFrame.lap = receivedBytes[9];
+
       for(byte n = 0; n < 15; n++) {
-        myData.text1[n] = receivedBytes[n+10];
+        fusionOsdFrame.text1[n] = receivedBytes[n+10];
       }
+      fusionOsdFrame.text1[14] = '\0';
       for(byte n = 0; n < 15; n++) {
-        myData.text2[n] = receivedBytes[n+25];
+        fusionOsdFrame.text2[n] = receivedBytes[n+25];
       }
+      fusionOsdFrame.text2[14] = '\0';
       for(byte n = 0; n < 20; n++) {
-        myData.text3[n] = receivedBytes[n+40];
+        fusionOsdFrame.text3[n] = receivedBytes[n+40];
       }
-    
+      fusionOsdFrame.text3[19] = '\0';
+
+          
       // Show debug info
       #ifdef SERIALDEBUG
         for (byte n = 0; n < numReceived; n++) {
@@ -153,31 +195,31 @@ void handleCommand() {
           Serial.print(' ');
         }
         Serial.println(' ');
-        Serial.println(myData.pos);
-        Serial.println(myData.lap);
-        Serial.println(myData.text1);
-        Serial.println(myData.text2);
-        Serial.println(myData.text3);
+        Serial.println(fusionOsdFrame.pos);
+        Serial.println(fusionOsdFrame.lap);
+        Serial.println(fusionOsdFrame.text1);
+        Serial.println(fusionOsdFrame.text2);
+        Serial.println(fusionOsdFrame.text3);
       #endif      
 
       #ifdef OLED
         u8x8.setCursor(0, 1);
         u8x8.print("Pos: ");
-        u8x8.print(myData.pos);
+        u8x8.print(fusionOsdFrame.pos);
         u8x8.setCursor(0, 2);
         u8x8.print("Lap: ");
-        u8x8.print(myData.lap);
+        u8x8.print(fusionOsdFrame.lap);
         u8x8.setCursor(0, 3);
         for(byte n = 0; n < 15; n++) {
-          u8x8.print(myData.text1[n]);
+          u8x8.print(fusionOsdFrame.text1[n]);
         }    
         u8x8.setCursor(0, 4);
         for(byte n = 0; n < 15; n++) {
-          u8x8.print(myData.text2[n]);
+          u8x8.print(fusionOsdFrame.text2[n]);
         }
         u8x8.setCursor(0, 5);
         for(byte n = 0; n < 16; n++) {
-          u8x8.print(myData.text3[n]);
+          u8x8.print(fusionOsdFrame.text3[n]);
         }
         u8x8.setCursor(0, 7);
         u8x8.print("mac:");
@@ -196,14 +238,14 @@ void handleCommand() {
       }
 
       // Send message via ESP-NOW
-      esp_err_t result = esp_now_send(rcvAddress, (uint8_t *) &myData, sizeof(myData));
+      tries = 0;
+      esp_err_t result = esp_now_send(rcvAddress, (uint8_t *) &fusionOsdFrame, sizeof(fusionOsdFrame));
 
       if (result == ESP_OK) {
         #ifdef SERIALDEBUG
           Serial.println("Sent with success");
         #endif
-      }
-      else {
+      } else {
         #ifdef SERIALDEBUG
           Serial.println("Error sending the data");
         #endif
@@ -211,8 +253,6 @@ void handleCommand() {
           u8x8.print("Error");
         #endif      
       }
-      // Remove peer
-      esp_now_del_peer(rcvAddress);
     } else {
       #ifdef SERIALDEBUG
         for (byte n = 0; n < numReceived; n++) {
