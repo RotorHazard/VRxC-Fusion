@@ -64,6 +64,55 @@ class TBSController(VRxController):
 
         logger.warning("No Fusion comms module discovered")
 
+    def onHeatSet(self, _args):
+        nodes = self.RACE.node_pilots
+        for node in nodes:
+            if nodes[node]:
+                pilot = self.RHData.get_pilot(nodes[node])
+                address = self.RHData.get_pilot_attribute_value(nodes[node], 'mac')
+                if address:
+                    address = int(address.strip()[:12], 16)
+
+                    osdData = OSDData(0, 0, 
+                        '',
+                        self.Language.__("Ready"),
+                        pilot.callsign
+                    )
+                    self.sendLapMessage(address, osdData)
+
+    def onRaceStage(self, _args):
+        osdData = OSDData(0, 0, 
+            '',
+            self.Language.__("Ready"),
+            self.Language.__("Arm now")
+        )
+        self.sendBroadcastMessage(osdData)
+
+    def onRaceStart(self, _args):
+        osdData = OSDData(0, 0, 
+            '',
+            '',
+            self.Language.__("Go")
+        )
+        self.sendBroadcastMessage(osdData)
+
+    def onRaceFinish(self, _args):
+        osdData = OSDData(0, 0, 
+            '',
+            '',
+            self.Language.__("Finish")
+        )
+        self.sendBroadcastMessage(osdData)
+
+
+    def onRaceStop(self, _args):
+        osdData = OSDData(0, 0, 
+            '',
+            self.Language.__("Land Now"),
+            self.Language.__("Race Stopped")
+        )
+        self.sendBroadcastMessage(osdData)
+
     def onRaceLapRecorded(self, args):
         if 'node_index' in args:
             seat_index = args['node_index']
@@ -238,8 +287,8 @@ class TBSController(VRxController):
         '''
 
         osdCrosserData = OSDData(
-            int(str(osd['position'])), 
-            int(str(osd['lap_number'])), 
+            osd['position'], 
+            osd['lap_number'], 
             'LAP ' + osd['last_lap_time'],
             '',
             '',
@@ -300,8 +349,8 @@ class TBSController(VRxController):
                     osd_next_rank['position'], 
                     osd_next_rank['lap_number'], 
                     'LAP ' + osd_next_rank['last_lap_time'],
-                    'P' + osd_next_rank['position'] + ' -' + osd_next_split['split_time'],
-                    '-' + osd_next_rank['callsign']
+                    'P' + osd['position'] + ' -' + osd_next_split['split_time'],
+                    ' ' + osd['callsign']
                 )
 
                 # "Pos-Callsign L[n]|0:00:00"
@@ -313,15 +362,40 @@ class TBSController(VRxController):
                 address = self.RHData.get_pilot_attribute_value(osd_next_rank['pilot_id'], 'mac')
                 if address:
                     address = int(address.strip()[:12], 16)
-                    self.sendLapMessage(address, osdCrosserData)
+                    self.sendLapMessage(address, osdSplitData)
                     logger.debug('VRxC Fusion: Split/Pilot {}/Mac {}'.format(osd_next_rank['pilot_id'], hex(address)))
+
+    def onLapsClear(self, _args):
+        osdData = OSDData(0, 0, 
+            '',
+            '',
+            ''
+        )
+        self.sendBroadcastMessage(osdData)
+
+    def onSendMessage(self, args):
+        osdData = OSDData(0, 0, 
+            '',
+            '',
+            args['message']
+        )
+        self.sendBroadcastMessage(osdData)
+
+    def sendBroadcastMessage(self, osdData):
+        nodes = self.RACE.node_pilots
+        for node in nodes:
+            if nodes[node]:
+                address = self.RHData.get_pilot_attribute_value(nodes[node], 'mac')
+                if address:
+                    address = int(address.strip()[:12], 16)
+                    self.sendLapMessage(address, osdData)
 
     def sendLapMessage(self, address, osdData):
         data = bytearray()
         data.extend(TBSCommand.DISPLAY_DATA.to_bytes(1, 'big'))
         data.extend(address.to_bytes(6, 'big'))
-        data.extend(osdData.pos.to_bytes(1, 'big'))
-        data.extend(osdData.lap.to_bytes(1, 'big'))
+        data.extend(int(str(osdData.pos) or 0).to_bytes(1, 'big'))
+        data.extend(int(str(osdData.lap) or 0).to_bytes(1, 'big'))
         data.extend(str.encode('{:<14}\0'.format(str(osdData.text1)[:14])))
         data.extend(str.encode('{:<14}\0'.format(str(osdData.text2)[:14])))
         data.extend(str.encode('{:<19}\0'.format(str(osdData.text3)[:19])))
