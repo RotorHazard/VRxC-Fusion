@@ -1,8 +1,9 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-#define OLED
-#define SERIALDEBUG
+#define LED_BUILTIN 2
+#define OLED false
+#define SERIALDEBUG false
 
 #define IDENTIFY 0x01
 #define DISPLAY_DATA 0x10
@@ -30,7 +31,8 @@ typedef struct struct_message {
 struct_message fusionOsdFrame;
 
 esp_now_peer_info_t peerInfo;
-
+esp_now_peer_num_t peer_num;
+    
 uint8_t tries;
 
 // callback when data is sent
@@ -39,8 +41,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_SUCCESS) {
     esp_now_del_peer(mac_addr);
     #ifdef SERIALDEBUG
-      Serial.print("Last Packet Send Status:\t");
-      Serial.println("Delivery Success");
+      Serial.print(F("Last Packet Send Status:\t"));
+      Serial.println(F("Delivery Success"));
     #endif
     #ifdef OLED
       u8x8.setCursor(0, 0);
@@ -50,8 +52,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   } else {
     if (tries <= MAX_RETRY) {
       #ifdef SERIALDEBUG
-        Serial.print("Last Packet Send Status:\t");
-        Serial.println("Delivery Fail");
+        Serial.print(F("Last Packet Send Status:\t"));
+        Serial.println(F("Delivery Fail"));
       #endif   
       #ifdef OLED
         u8x8.setCursor(0, 0);
@@ -62,12 +64,18 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     } else {
       esp_now_del_peer(mac_addr);
       #ifdef SERIALDEBUG
-        Serial.println("No more retries");
+        Serial.println(F("No more retries"));
       #endif
       #ifdef OLED
         u8x8.print("*");
       #endif        
     }
+  }
+
+  // LED off when no peers exist
+  esp_now_get_peer_num (&peer_num);
+  if (!peer_num.total_num) {
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -89,7 +97,7 @@ void setup() {
   
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
+    Serial.println(F("Error initializing ESP-NOW"));
     return;
   }
 
@@ -105,8 +113,17 @@ void setup() {
   #ifdef OLED
     u8x8.begin();
     u8x8.setFont(u8x8_font_chroma48medium8_r);
-    u8x8.print("Ready");
+    u8x8.print(F("Ready"));
   #endif
+
+  // blink LED 3× at startup, leave on
+  pinMode(LED_BUILTIN, OUTPUT);
+  for(int i = 0; i < 3; i++) {
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(100);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(100);
+  }
 }
 
 const byte maxBytes = 255;
@@ -147,7 +164,7 @@ void recvBytes() {
         else if (rb == 0x00) {
             recvInProgress = true;
             #ifdef OLED
-              u8x8.print("--receive--");
+              u8x8.print(F("--receive--"));
             #endif
         }
     }
@@ -165,7 +182,15 @@ void handleCommand() {
       Serial.println(F("Fusion ESP"));
       #ifdef OLED
         u8x8.print(F("Identify"));
-      #endif        
+      #endif
+
+      // blink LED 3× at identify, leave off
+      for(int i = 0; i < 3; i++) {
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(100);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(100);
+      }
     } else if (receivedBytes[1] == DISPLAY_DATA) {
       for(byte n = 0; n < 6; n++) {
         rcvAddress[n] = receivedBytes[n+2];
@@ -204,10 +229,10 @@ void handleCommand() {
 
       #ifdef OLED
         u8x8.setCursor(0, 1);
-        u8x8.print("Pos: ");
+        u8x8.print(F("Pos: "));
         u8x8.print(fusionOsdFrame.pos);
         u8x8.setCursor(0, 2);
-        u8x8.print("Lap: ");
+        u8x8.print(F("Lap: "));
         u8x8.print(fusionOsdFrame.lap);
         u8x8.setCursor(0, 3);
         for(byte n = 0; n < 15; n++) {
@@ -222,17 +247,20 @@ void handleCommand() {
           u8x8.print(fusionOsdFrame.text3[n]);
         }
         u8x8.setCursor(0, 7);
-        u8x8.print("mac:");
+        u8x8.print(F("mac:"));
         for(byte n = 0; n < 6; n++) {
           u8x8.print(rcvAddress[n], HEX);
         }
       #endif
 
+      // LED on when peers exist
+      digitalWrite(LED_BUILTIN, HIGH);
+      
       // Set peer
       memcpy(peerInfo.peer_addr, rcvAddress, 6);
       if (esp_now_add_peer(&peerInfo) != ESP_OK){
         #ifdef SERIALDEBUG
-          Serial.println("Failed to add peer");
+          Serial.println(F("Failed to add peer"));
         #endif
         return;
       }
@@ -243,14 +271,14 @@ void handleCommand() {
 
       if (result == ESP_OK) {
         #ifdef SERIALDEBUG
-          Serial.println("Sent with success");
+          Serial.println(F("Sent with success"));
         #endif
       } else {
         #ifdef SERIALDEBUG
-          Serial.println("Error sending the data");
+          Serial.println(F("Error sending the data"));
         #endif
         #ifdef OLED
-          u8x8.print("Error");
+          u8x8.print(F("Error"));
         #endif      
       }
     } else {
@@ -260,15 +288,15 @@ void handleCommand() {
           Serial.print(" ");
         }
         Serial.println("");
-        Serial.print("Command: ");
-        Serial.println(receivedBytes[1]);
+        Serial.print(F("Command: "));
+        Serial.println(receivedBytes[1], HEX);
       #endif
 
       #ifdef OLED
         u8x8.clear();
         u8x8.setCursor(0, 0);
-        u8x8.print("Command: ");
-        u8x8.print(receivedBytes[1]);
+        u8x8.print(F("Command: "));
+        u8x8.print(receivedBytes[1], HEX);
       #endif
     }
   }
