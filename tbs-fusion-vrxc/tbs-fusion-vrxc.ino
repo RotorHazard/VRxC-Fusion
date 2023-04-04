@@ -9,6 +9,7 @@
 #define DISPLAY_DATA 0x10
 
 #define MAX_RETRY 5
+#define BAUDRATE 921600
 
 #ifdef OLED
   #include <U8g2lib.h>
@@ -23,9 +24,9 @@ typedef struct struct_message {
   uint8_t cc = 0x22;
   uint8_t pos;
   uint8_t lap;
-  char text1[15];
-  char text2[15];
-  char text3[20];
+  char text1[16];
+  char text2[16];
+  char text3[21];
 } struct_message;
 
 struct_message fusionOsdFrame;
@@ -81,7 +82,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void setup() {
   // Init Serial Monitor
-  Serial.begin(115200);
+  Serial.begin(BAUDRATE);
  
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
@@ -202,15 +203,15 @@ void handleCommand() {
       for(byte n = 0; n < 15; n++) {
         fusionOsdFrame.text1[n] = receivedBytes[n+10];
       }
-      fusionOsdFrame.text1[14] = '\0';
+      fusionOsdFrame.text1[15] = '\0';
       for(byte n = 0; n < 15; n++) {
-        fusionOsdFrame.text2[n] = receivedBytes[n+25];
+        fusionOsdFrame.text2[n] = receivedBytes[n+26];
       }
-      fusionOsdFrame.text2[14] = '\0';
+      fusionOsdFrame.text2[15] = '\0';
       for(byte n = 0; n < 20; n++) {
-        fusionOsdFrame.text3[n] = receivedBytes[n+40];
+        fusionOsdFrame.text3[n] = receivedBytes[n+42];
       }
-      fusionOsdFrame.text3[19] = '\0';
+      fusionOsdFrame.text3[20] = '\0';
 
           
       // Show debug info

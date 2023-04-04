@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def registerHandlers(args):
     if 'registerFn' in args:
-        args['registerFn'](TBSController(
+        args['registerFn'](FusionController(
             'tbs',
             'TBS'
         ))
@@ -22,13 +22,13 @@ def initialize(**kwargs):
     if 'RHUI' in kwargs:
         kwargs['RHUI'].register_pilot_attribute("mac", "Fusion MAC Address", "text")
 
-class TBSController(VRxController):
+class FusionController(VRxController):
     def __init__(self, name, label):
         self.ser = serial.Serial()
         super().__init__(name, label)
 
     def onStartup(self, _args):
-        self.ser.baudrate = 115200
+        self.ser.baudrate = 921600
 
         # Find port for TBS comms device
         port = self.RHData.get_option('tbs_comms_port', None)
@@ -48,18 +48,22 @@ class TBSController(VRxController):
             self.ser.timeout = 1
 
             for p in ports:
-                self.ser.port = p.device
-                self.ser.open()
-                self.ser.write(payload)
-                time.sleep(0.1)
-                response = self.ser.read(10)
-                if response.decode()[:10] == "Fusion ESP":
-                    logger.info("Found Fusion comms module at {}".format(p.device))
+                try:
+                    response = None
                     self.ser.port = p.device
-                    self.ser.close()
-                    return
-                else:
-                    logger.debug("No Fusion comms module at {} (got {})".format(p.device, response))
+                    self.ser.open()
+                    self.ser.write(payload)
+                    response = self.ser.read(10)
+                    if response.decode()[:10] == "Fusion ESP":
+                        logger.info("Found Fusion comms module at {}".format(p.device))
+                        self.ser.port = p.device
+                        self.ser.close()
+                        return
+                except serial.serialutil.SerialException:
+                    pass
+
+                logger.debug("No Fusion comms module at {} (got {})".format(p.device, response))
+
                 self.ser.close()
 
         logger.warning("No Fusion comms module discovered")
@@ -396,9 +400,9 @@ class TBSController(VRxController):
         data.extend(address.to_bytes(6, 'big'))
         data.extend(int(str(osdData.pos) or 0).to_bytes(1, 'big'))
         data.extend(int(str(osdData.lap) or 0).to_bytes(1, 'big'))
-        data.extend(str.encode('{:<14}\0'.format(str(osdData.text1)[:14])))
-        data.extend(str.encode('{:<14}\0'.format(str(osdData.text2)[:14])))
-        data.extend(str.encode('{:<19}\0'.format(str(osdData.text3)[:19])))
+        data.extend(str.encode('{:<15}\0'.format(str(osdData.text1)[:15])))
+        data.extend(str.encode('{:<15}\0'.format(str(osdData.text2)[:15])))
+        data.extend(str.encode('{:<20}\0'.format(str(osdData.text3)[:20])))
 
         payload = bytearray()
         payload.extend(0x00.to_bytes(1, 'big')) # Packet start
