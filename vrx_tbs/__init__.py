@@ -2,7 +2,6 @@
 import logging
 import serial
 import serial.tools.list_ports
-import time
 from RHRace import WinCondition
 import RHUtils
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
@@ -56,8 +55,6 @@ class FusionController(VRxController):
                     response = self.ser.read(10)
                     if response.decode()[:10] == "Fusion ESP":
                         logger.info("Found Fusion comms module at {}".format(p.device))
-                        self.ser.port = p.device
-                        self.ser.close()
                         return
                 except serial.serialutil.SerialException:
                     pass
@@ -410,9 +407,10 @@ class FusionController(VRxController):
         payload.extend(data) # Packet data
         payload.extend(0xFF.to_bytes(1, 'big')) # Packet terminate
 
-        self.ser.open()
-        self.ser.write(payload)
-        self.ser.close()
+        try:
+            self.ser.write(payload)
+        except:
+            pass
 
 class TBSCommand():
     IDENTIFY = 0x01
