@@ -2,6 +2,7 @@
 import logging
 import serial
 import serial.tools.list_ports
+from struct import pack
 from RHRace import WinCondition
 import RHUtils
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
@@ -37,11 +38,7 @@ class FusionController(VRxController):
             # Automatic port discovery
             logger.debug("Finding serial port for TBS comms device")
 
-            payload = bytearray()
-            payload.extend(0x00.to_bytes(1, 'big')) # Packet start
-            payload.extend(0x01.to_bytes(1, 'big')) # Packet length
-            payload.extend(TBSCommand.IDENTIFY.to_bytes(1, 'big')) # Packet data
-            payload.extend(0xFF.to_bytes(1, 'big')) # Packet terminate
+            payload = pack(">BBBB", 0x00, 0x01, TBSCommand.IDENTIFY, 0xFF)
 
             ports = list(serial.tools.list_ports.comports())
             self.ser.timeout = 1
@@ -392,22 +389,26 @@ class FusionController(VRxController):
                     self.sendLapMessage(address, osdData)
 
     def sendLapMessage(self, address, osdData):
-        data = bytearray()
-        data.extend(TBSCommand.DISPLAY_DATA.to_bytes(1, 'big'))
-        data.extend(address.to_bytes(6, 'big'))
-        data.extend(int(str(osdData.pos) or 0).to_bytes(1, 'big'))
-        data.extend(int(str(osdData.lap) or 0).to_bytes(1, 'big'))
-        data.extend(str.encode('{:<15}\0'.format(str(osdData.text1)[:15])))
-        data.extend(str.encode('{:<15}\0'.format(str(osdData.text2)[:15])))
-        data.extend(str.encode('{:<20}\0'.format(str(osdData.text3)[:20])))
-
-        payload = bytearray()
-        payload.extend(0x00.to_bytes(1, 'big')) # Packet start
-        payload.extend(len(data).to_bytes(1, 'big')) # Packet length
-        payload.extend(data) # Packet data
-        payload.extend(0xFF.to_bytes(1, 'big')) # Packet terminate
+        addr = address.to_bytes(6, 'big')
 
         try:
+            pos = int(osdData.pos)
+        except ValueError:
+            pos = 0
+
+        try:
+            lap = int(osdData.lap)
+        except ValueError:
+            lap = 0
+
+        text1 = str.encode('{:<15}\0'.format(str(osdData.text1)[:15]))
+        text2 = str.encode('{:<15}\0'.format(str(osdData.text2)[:15]))
+        text3 = str.encode('{:<20}\0'.format(str(osdData.text3)[:20]))
+
+        data = pack(">B 6s B B 15s 15s 20s", TBSCommand.DISPLAY_DATA, addr, pos, lap, text1, text2, text3 )
+
+        payload = pack(">BB {}s B".format(len(data)), 0x00, len(data), data, 0xFF)
+
             self.ser.write(payload)
         except:
             pass
