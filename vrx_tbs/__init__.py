@@ -217,7 +217,7 @@ class FusionController(VRxController):
             # get the fastest result
             first_rank_split = None
             first_rank_split_result = None
-            if result['position'] > 2:
+            if isinstance(result['position'], int) and result['position'] > 2:
                 first_rank_split_result = leaderboard[0]
 
                 if next_rank_split_result['total_time_raw']:
@@ -243,7 +243,7 @@ class FusionController(VRxController):
                 'position': str(result['position']),
                 'callsign': result['callsign'],
                 'lap_prefix': LAP_HEADER,
-                'lap_number': '',
+                'lap_number': 0,
                 'last_lap_time': '',
                 'total_time': result['total_time'],
                 'total_time_laps': result['total_time_laps'],
@@ -252,7 +252,7 @@ class FusionController(VRxController):
             }
 
             if result['laps']:
-                osd['lap_number'] = str(result['laps'])
+                osd['lap_number'] = result['laps']
                 osd['last_lap_time'] = result['last_lap']
             else:
                 osd['lap_prefix'] = '{:<3}'.format(self.Language.__('HS'))
@@ -274,13 +274,13 @@ class FusionController(VRxController):
                     'position': str(next_rank_split_result['position']),
                     'callsign': next_rank_split_result['callsign'],
                     'lap_prefix': LAP_HEADER,
-                    'lap_number': '',
+                    'lap_number': 0,
                     'last_lap_time': '',
                     'total_time': result['total_time'],
                 }
 
                 if next_rank_split_result['laps']:
-                    osd_next_rank['lap_number'] = str(next_rank_split_result['laps'])
+                    osd_next_rank['lap_number'] = next_rank_split_result['laps']
                     osd_next_rank['last_lap_time'] = next_rank_split_result['last_lap']
                 else:
                     osd_next_rank['lap_prefix'] = self.Language.__('HS')
@@ -330,20 +330,21 @@ class FusionController(VRxController):
                 # LAP 0:00.000
 
                 if next_rank_split:
-                    # pilot in 2nd or lower
+                    # pilot in 2nd or self has faster lap
                     # Pos X Lap X
                     # LAP 0:00.000
                     # PX +0:00.000
                     #  Callsign
                     osdCrosserData.text2 = osd['position_prefix'] + osd_next_split['position'] + ' +' + osd_next_split['split_time']
                     osdCrosserData.text3 = ' ' + osd_next_split['callsign']
-                elif osd['is_best_lap']:
-                    # pilot in 1st and is best lap
+                elif osd['is_best_lap'] and osd['lap_number']:
+                    # pilot in 1st, is best lap, 
                     # Pos X Lap X
                     # LAP 0:00.000
                     # Best Lap
                     #
                     osdCrosserData.text2 = self.Language.__('Best Lap')
+                    
             else:
                 # WinCondition.MOST_LAPS
                 # WinCondition.FIRST_TO_LAP_X
