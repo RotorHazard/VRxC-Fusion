@@ -2,8 +2,8 @@
 #include <WiFi.h>
 
 #define LED_BUILTIN 2
-#define OLED false
-#define SERIALDEBUG false
+// #define OLED
+// #define SERIALDEBUG
 
 #define IDENTIFY 0x01
 #define DISPLAY_DATA 0x10
