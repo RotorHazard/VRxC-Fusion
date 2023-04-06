@@ -27,13 +27,13 @@ class FusionController(VRxController):
         self.ser = serial.Serial()
         super().__init__(name, label)
 
-    def onStartup(self, _args):
-        self.ser.baudrate = 921600
-
+    def discoverPort(self):
         # Find port for TBS comms device
         port = self.RHData.get_option('tbs_comms_port', None)
         if port:
             self.ser.port = port
+            logger.info("Using port {} from config for Fusion comms module".format(port))
+            return
         else:
             # Automatic port discovery
             logger.debug("Finding serial port for TBS comms device")
@@ -50,9 +50,13 @@ class FusionController(VRxController):
                     self.ser.open()
                     self.ser.write(payload)
                     response = self.ser.read(10)
-                    if response.decode()[:10] == "Fusion ESP":
-                        logger.info("Found Fusion comms module at {}".format(p.device))
-                        return
+                    try:
+                        if response.decode()[:10] == "Fusion ESP":
+                            logger.info("Found Fusion comms module at {}".format(p.device))
+                            self.ready = True
+                            return
+                    except:
+                        pass
                 except serial.serialutil.SerialException:
                     pass
 
@@ -60,56 +64,65 @@ class FusionController(VRxController):
 
                 self.ser.close()
 
-        logger.warning("No Fusion comms module discovered")
+            logger.warning("No Fusion comms module discovered or configured")
+            self.ready = False
+
+    def onStartup(self, _args):
+        self.ser.baudrate = 921600
+        self.discoverPort()
 
     def onHeatSet(self, _args):
-        nodes = self.RACE.node_pilots
-        for node in nodes:
-            if nodes[node]:
-                pilot = self.RHData.get_pilot(nodes[node])
-                address = self.RHData.get_pilot_attribute_value(nodes[node], 'mac')
-                if address:
-                    address = int(address.strip()[:12], 16)
+        if self.ready:
+            nodes = self.RACE.node_pilots
+            for node in nodes:
+                if nodes[node]:
+                    pilot = self.RHData.get_pilot(nodes[node])
+                    address = self.RHData.get_pilot_attribute_value(nodes[node], 'mac')
+                    if address:
+                        address = int(address.strip()[:12], 16)
 
-                    osdData = OSDData(0, 0, 
-                        '',
-                        self.Language.__("Ready"),
-                        pilot.callsign
-                    )
-                    self.sendLapMessage(address, osdData)
+                        osdData = OSDData(0, 0, 
+                            '',
+                            self.Language.__("Ready"),
+                            pilot.callsign
+                        )
+                        self.sendLapMessage(address, osdData)
 
     def onRaceStage(self, _args):
-        osdData = OSDData(0, 0, 
-            '',
-            self.Language.__("Ready"),
-            self.Language.__("Arm now")
-        )
-        self.sendBroadcastMessage(osdData)
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                self.Language.__("Ready"),
+                self.Language.__("Arm now")
+            )
+            self.sendBroadcastMessage(osdData)
 
     def onRaceStart(self, _args):
-        osdData = OSDData(0, 0, 
-            '',
-            '',
-            self.Language.__("Go")
-        )
-        self.sendBroadcastMessage(osdData)
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                '',
+                self.Language.__("Go")
+            )
+            self.sendBroadcastMessage(osdData)
 
     def onRaceFinish(self, _args):
-        osdData = OSDData(0, 0, 
-            '',
-            '',
-            self.Language.__("Finish")
-        )
-        self.sendBroadcastMessage(osdData)
-
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                '',
+                self.Language.__("Finish")
+            )
+            self.sendBroadcastMessage(osdData)
 
     def onRaceStop(self, _args):
-        osdData = OSDData(0, 0, 
-            '',
-            self.Language.__("Land Now"),
-            self.Language.__("Race Stopped")
-        )
-        self.sendBroadcastMessage(osdData)
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                self.Language.__("Land Now"),
+                self.Language.__("Race Stopped")
+            )
+            self.sendBroadcastMessage(osdData)
 
     def onRaceLapRecorded(self, args):
         if 'node_index' in args:
@@ -364,20 +377,22 @@ class FusionController(VRxController):
                     logger.debug('VRxC Fusion: Split/Pilot {}/Mac {}'.format(osd_next_rank['pilot_id'], hex(address)))
 
     def onLapsClear(self, _args):
-        osdData = OSDData(0, 0, 
-            '',
-            '',
-            ''
-        )
-        self.sendBroadcastMessage(osdData)
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                '',
+                ''
+            )
+            self.sendBroadcastMessage(osdData)
 
     def onSendMessage(self, args):
-        osdData = OSDData(0, 0, 
-            '',
-            '',
-            args['message']
-        )
-        self.sendBroadcastMessage(osdData)
+        if self.ready:
+            osdData = OSDData(0, 0, 
+                '',
+                '',
+                args['message']
+            )
+            self.sendBroadcastMessage(osdData)
 
     def sendBroadcastMessage(self, osdData):
         nodes = self.RACE.node_pilots
@@ -409,9 +424,15 @@ class FusionController(VRxController):
 
         payload = pack(">BB {}s B".format(len(data)), 0x00, len(data), data, 0xFF)
 
+        try:
+            if(self.ser.isOpen() == False):
+                self.ser.open()
             self.ser.write(payload)
-        except:
-            pass
+            logger.debug('VRxC Fusion message ({}) {} {}'.format(hex(address), str(osdData.text1)[:15], str(osdData.text3)[:15]))
+        except Exception as ex:
+            logger.info("Unable to send Fusion data: {}".format(ex))
+            self.ser.close()
+
 
 class TBSCommand():
     IDENTIFY = 0x01
