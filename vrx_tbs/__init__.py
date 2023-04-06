@@ -2,6 +2,7 @@
 import logging
 import serial
 import serial.tools.list_ports
+import time
 from struct import pack
 from RHRace import WinCondition
 import RHUtils
@@ -48,6 +49,8 @@ class FusionController(VRxController):
                     response = None
                     self.ser.port = p.device
                     self.ser.open()
+                    time.sleep(2)
+                    self.ser.reset_input_buffer()
                     self.ser.write(payload)
                     response = self.ser.read(10)
                     try:
