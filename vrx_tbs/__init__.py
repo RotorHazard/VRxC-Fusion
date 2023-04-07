@@ -77,6 +77,7 @@ class FusionController(VRxController):
     def onHeatSet(self, _args):
         if self.ready:
             nodes = self.RACE.node_pilots
+            heat = self.RHData.get_heat(self.RACE.current_heat)
             for node in nodes:
                 if nodes[node]:
                     pilot = self.RHData.get_pilot(nodes[node])
@@ -85,20 +86,33 @@ class FusionController(VRxController):
                         address = int(address.strip()[:12], 16)
 
                         osdData = OSDData(0, 0, 
-                            '',
                             self.Language.__("Ready"),
-                            pilot.callsign
+                            pilot.callsign,
+                            ''
                         )
+                        if heat:
+                            osdData.text3 = heat.displayname()
                         self.sendLapMessage(address, osdData)
 
     def onRaceStage(self, _args):
         if self.ready:
-            osdData = OSDData(0, 0, 
-                '',
-                self.Language.__("Ready"),
-                self.Language.__("Arm now")
-            )
-            self.sendBroadcastMessage(osdData)
+            nodes = self.RACE.node_pilots
+            heat = self.RHData.get_heat(self.RACE.current_heat)
+            for node in nodes:
+                if nodes[node]:
+                    pilot = self.RHData.get_pilot(nodes[node])
+                    address = self.RHData.get_pilot_attribute_value(nodes[node], 'mac')
+                    if address:
+                        address = int(address.strip()[:12], 16)
+
+                        osdData = OSDData(0, 0, 
+                            self.Language.__("Arm now"),
+                            pilot.callsign,
+                            ''
+                        )
+                        if heat:
+                            osdData.text3 = heat.displayname()
+                        self.sendLapMessage(address, osdData)
 
     def onRaceStart(self, _args):
         if self.ready:
@@ -114,7 +128,7 @@ class FusionController(VRxController):
             osdData = OSDData(0, 0, 
                 '',
                 '',
-                self.Language.__("Finish")
+                self.Language.__("Race Time Expired")
             )
             self.sendBroadcastMessage(osdData)
 
@@ -122,8 +136,8 @@ class FusionController(VRxController):
         if self.ready:
             osdData = OSDData(0, 0, 
                 '',
-                self.Language.__("Land Now"),
-                self.Language.__("Race Stopped")
+                self.Language.__("Race Stopped"),
+                self.Language.__("Land Now")
             )
             self.sendBroadcastMessage(osdData)
 
