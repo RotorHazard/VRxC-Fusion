@@ -460,7 +460,7 @@ class FusionController(VRxController):
         text2 = str.encode('{:<15}\0'.format(str(osdData.text2)[:15]))
         text3 = str.encode('{:<20}\0'.format(str(osdData.text3)[:20]))
 
-        data = pack(">B 6s B B 15s 15s 20s", TBSCommand.DISPLAY_DATA, addr, pos, lap, text1, text2, text3 )
+        data = pack(">B 6s B B 16s 16s 21s", TBSCommand.DISPLAY_DATA, addr, pos, lap, text1, text2, text3 )
 
         payload = pack(">BB {}s B".format(len(data)), 0x00, len(data), data, 0xFF)
 
