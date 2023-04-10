@@ -85,19 +85,26 @@ class FusionController(VRxController):
                     if address:
                         address = int(address.strip()[:12], 16)
 
-                        osdData = OSDData(0, 0, 
-                            self.Language.__("Ready"),
-                            pilot.callsign,
-                            ''
-                        )
                         if heat:
-                            osdData.text3 = heat.displayname()
+                            round_num = self.RHData.get_max_round(self.RACE.current_heat) or 0
+                            osdData = OSDData(0, 0, 
+                                pilot.callsign,
+                                '{} {}'.format(self.Language.__("Round"), round_num + 1),
+                                heat.displayname()
+                            )
+
+                        else:
+                            osdData = OSDData(0, 0, 
+                                pilot.callsign,
+                                '',
+                                self.Language.__("Ready"),
+                            )
+
                         self.sendLapMessage(address, osdData)
 
     def onRaceStage(self, _args):
         if self.ready:
             nodes = self.RACE.node_pilots
-            heat = self.RHData.get_heat(self.RACE.current_heat)
             for node in nodes:
                 if nodes[node]:
                     pilot = self.RHData.get_pilot(nodes[node])
@@ -105,16 +112,15 @@ class FusionController(VRxController):
                     if address:
                         address = int(address.strip()[:12], 16)
 
-                        osdData = OSDData(0, 0, 
-                            self.Language.__("Arm now"),
+                        osdData = OSDData(0, 0,
                             pilot.callsign,
-                            ''
+                            '', 
+                            self.Language.__("Arm now"),
                         )
-                        if heat:
-                            osdData.text3 = heat.displayname()
                         self.sendLapMessage(address, osdData)
 
     def onRaceStart(self, _args):
+        #TODO: Schedule start message per race
         if self.ready:
             osdData = OSDData(0, 0, 
                 '',
@@ -128,7 +134,7 @@ class FusionController(VRxController):
             osdData = OSDData(0, 0, 
                 '',
                 '',
-                self.Language.__("Race Time Expired")
+                self.Language.__("Time Expired")
             )
             self.sendBroadcastMessage(osdData)
 
