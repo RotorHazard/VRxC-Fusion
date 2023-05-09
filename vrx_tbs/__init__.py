@@ -191,23 +191,16 @@ class FusionController(VRxController):
                 '',
             )
 
-            if info.race.win_condition == WinCondition.FASTEST_3_CONSECUTIVE:
+            if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE:
                 # Pos X Lap X
                 # LAP 0:00.000
-                if info.current.lap_number >= 3:
+                if info.current.lap_number > 1:
                     # Pos X Lap X
                     # LAP 0:00.000
                     # PRV 0:00.000
-                    # 3/  0:00.000
+                    # X/  0:00.000
                     osdCrosserData.text2 = PREVIOUS_LAP_HEADER + ' ' + RHUtils.time_format(info.current.lap_list[-2]['lap_raw'], TIME_FORMAT)
-                    osdCrosserData.text3 = '3/  ' + RHUtils.time_format(info.current.consecutives, TIME_FORMAT)
-                elif info.current.lap_number == 2:
-                    # Pos X Lap X
-                    # LAP 0:00.000
-                    # PRV 0:00.000
-                    # 2/  0:00.000
-                    osdCrosserData.text2 = PREVIOUS_LAP_HEADER + ' ' + RHUtils.time_format(info.current.lap_list[-2]['lap_raw'], TIME_FORMAT)
-                    osdCrosserData.text3 = '2/  ' + RHUtils.time_format(info.current.total_time_laps, TIME_FORMAT)
+                    osdCrosserData.text3 = str(info.current.consecutives_base) + '/  ' + RHUtils.time_format(info.current.consecutives, TIME_FORMAT)
 
             elif info.race.win_condition == WinCondition.FASTEST_LAP:
                 # Pos X Lap X
@@ -259,7 +252,7 @@ class FusionController(VRxController):
 
             # show split when next pilot crosses
             if info.next_rank.split_time:
-                if info.race.win_condition == WinCondition.FASTEST_3_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
+                if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
                     # don't update
                     pass
 
