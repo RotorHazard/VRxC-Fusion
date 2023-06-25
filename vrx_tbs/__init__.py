@@ -7,31 +7,37 @@ from struct import pack
 from RHRace import WinCondition
 import RHUtils
 import Results
+from eventmanager import Evt
+from RHUI import UIField, UIFieldType
 from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
 
 logger = logging.getLogger(__name__)
 
+MAC_ADDR_OPT_NAME = 'comm_tbs_mac'
+
 def registerHandlers(args):
-    if 'registerFn' in args:
-        args['registerFn'](FusionController(
-            'tbs',
-            'TBS'
-        ))
+    args['register_fn'](FusionController(
+        'tbs',
+        'TBS'
+    ))
+
+rhapi = None
 
 def initialize(**kwargs):
-    if 'Events' in kwargs:
-        kwargs['Events'].on('VRxC_Initialize', 'VRx_register_tbs', registerHandlers, {}, 75)
-    if 'RHAPI' in kwargs:
-        kwargs['RHAPI'].register_pilot_attribute("mac", "Fusion MAC Address", "text")
+    kwargs['events'].on(Evt.VRX_INITIALIZE, 'VRx_register_tbs', registerHandlers, {}, 75)
+    kwargs['rhapi'].fields.register_pilot_attribute(UIField(MAC_ADDR_OPT_NAME, "Fusion MAC Address", UIFieldType.TEXT))
+    global rhapi
+    rhapi = kwargs['rhapi']
 
 class FusionController(VRxController):
     def __init__(self, name, label):
         self.ser = serial.Serial()
         super().__init__(name, label)
+        self.rhapi = rhapi # TODO: Pass RHAPI normally
 
     def discoverPort(self):
         # Find port for TBS comms device
-        port = self.racecontext.rhdata.get_option('tbs_comms_port', None)
+        port = self.rhapi.db.option('tbs_comms_port', None)
         if port:
             self.ser.port = port
             logger.info("Using port {} from config for Fusion comms module".format(port))
@@ -77,46 +83,46 @@ class FusionController(VRxController):
 
     def onHeatSet(self, _args):
         if self.ready:
-            seat_pilots = self.racecontext.race.node_pilots
-            heat = self.racecontext.rhdata.get_heat(self.racecontext.race.current_heat)
+            seat_pilots = self.rhapi.race.pilots
+            heat = self.rhapi.db.heat_by_id(self.rhapi.race.heat)
             for seat in seat_pilots:
                 if seat_pilots[seat]:
-                    pilot = self.racecontext.rhdata.get_pilot(seat_pilots[seat])
-                    address = self.racecontext.rhdata.get_pilot_attribute_value(seat_pilots[seat], 'mac')
+                    pilot = self.rhapi.db.pilot_by_id(seat_pilots[seat])
+                    address = self.rhapi.db.pilot_attribute_value(seat_pilots[seat], MAC_ADDR_OPT_NAME)
                     if address:
                         address = int(address.strip()[:12], 16)
 
                         if heat:
-                            round_num = self.racecontext.rhdata.get_max_round(self.racecontext.race.current_heat) or 0
+                            round_num = self.rhapi.db.heat_max_round(self.rhapi.race.heat) or 0
                             osdData = OSDData(0, 0, 
-                                pilot.callsign,
-                                '{} {}'.format(self.racecontext.language.__("Round"), round_num + 1),
-                                heat.displayname()
+                                pilot.display_callsign,
+                                '{} {}'.format(self.rhapi.__("Round"), round_num + 1),
+                                heat.display_name
                             )
 
                         else:
                             osdData = OSDData(0, 0, 
-                                pilot.callsign,
+                                pilot.display_callsign,
                                 '',
-                                self.racecontext.language.__("Ready"),
+                                self.rhapi.__("Ready"),
                             )
 
                         self.sendLapMessage(address, osdData)
 
     def onRaceStage(self, _args):
         if self.ready:
-            seat_pilots = self.racecontext.race.node_pilots
+            seat_pilots = self.rhapi.race.pilots
             for seat in seat_pilots:
                 if seat_pilots[seat]:
-                    pilot = self.racecontext.rhdata.get_pilot(seat_pilots[seat])
-                    address = self.racecontext.rhdata.get_pilot_attribute_value(seat_pilots[seat], 'mac')
+                    pilot = self.rhapi.db.pilot_by_id(seat_pilots[seat])
+                    address = self.rhapi.db.pilot_attribute_value(seat_pilots[seat], MAC_ADDR_OPT_NAME)
                     if address:
                         address = int(address.strip()[:12], 16)
 
                         osdData = OSDData(0, 0,
-                            pilot.callsign,
+                            pilot.display_callsign,
                             '', 
-                            self.racecontext.language.__("Arm now"),
+                            self.rhapi.__("Arm now"),
                         )
                         self.sendLapMessage(address, osdData)
 
@@ -126,7 +132,7 @@ class FusionController(VRxController):
             osdData = OSDData(0, 0, 
                 '',
                 '',
-                self.racecontext.language.__("Go")
+                self.rhapi.__("Go")
             )
             self.sendBroadcastMessage(osdData)
 
@@ -135,7 +141,7 @@ class FusionController(VRxController):
             osdData = OSDData(0, 0, 
                 '',
                 '',
-                self.racecontext.language.__("Time Expired")
+                self.rhapi.__("Time Expired")
             )
             self.sendBroadcastMessage(osdData)
 
@@ -143,8 +149,8 @@ class FusionController(VRxController):
         if self.ready:
             osdData = OSDData(0, 0, 
                 '',
-                self.racecontext.language.__("Race Stopped"),
-                self.racecontext.language.__("Land Now")
+                self.rhapi.__("Race Stopped"),
+                self.rhapi.__("Land Now")
             )
             self.sendBroadcastMessage(osdData)
 
@@ -161,13 +167,13 @@ class FusionController(VRxController):
                 info = Results.get_gap_info(self.racecontext, args['node_index'])
 
             # Set up output objects
-            TIME_FORMAT = self.racecontext.rhdata.get_option('timeFormat')
-            LAP_HEADER = '{:<3}'.format(self.racecontext.rhdata.get_option('osd_lapHeader', "LAP"))
-            PREVIOUS_LAP_HEADER = '{:<3}'.format(self.racecontext.rhdata.get_option('osd_previousLapHeader', "PRV"))
-            POS_HEADER = '{:<1}'.format(self.racecontext.rhdata.get_option('osd_positionHeader', "P"))
-            BEST_LAP_TEXT = self.racecontext.language.__('Best Lap')
-            HOLESHOT_TEXT = self.racecontext.language.__('HS')
-            LEADER_TEXT = self.racecontext.language.__('Leader')
+            TIME_FORMAT = self.rhapi.db.option('timeFormat')
+            LAP_HEADER = '{:<3}'.format(self.rhapi.db.option('osd_lapHeader', "LAP"))
+            PREVIOUS_LAP_HEADER = '{:<3}'.format(self.rhapi.db.option('osd_previousLapHeader', "PRV"))
+            POS_HEADER = '{:<1}'.format(self.rhapi.db.option('osd_positionHeader', "P"))
+            BEST_LAP_TEXT = self.rhapi.__('Best Lap')
+            HOLESHOT_TEXT = self.rhapi.__('HS')
+            LEADER_TEXT = self.rhapi.__('Leader')
 
             if info.current.lap_number:
                 lap_prefix = LAP_HEADER
@@ -245,7 +251,7 @@ class FusionController(VRxController):
                     osdCrosserData.text2 = ' ' + LEADER_TEXT
 
             # send message to crosser
-            address = self.racecontext.rhdata.get_pilot_attribute_value(info.current.pilot_id, 'mac')
+            address = self.rhapi.db.pilot_attribute_value(info.current.pilot_id, MAC_ADDR_OPT_NAME)
             if address:
                 address = int(address.strip()[:12], 16)
                 self.sendLapMessage(address, osdCrosserData)
@@ -274,7 +280,7 @@ class FusionController(VRxController):
                         ' ' + info.current.callsign
                     )
 
-                    address = self.racecontext.rhdata.get_pilot_attribute_value(info.next_rank.pilot_id, 'mac')
+                    address = self.rhapi.db.pilot_attribute_value(info.next_rank.pilot_id, MAC_ADDR_OPT_NAME)
                     if address:
                         address = int(address.strip()[:12], 16)
                         self.sendLapMessage(address, osdSplitData)
@@ -298,10 +304,10 @@ class FusionController(VRxController):
             self.sendBroadcastMessage(osdData)
 
     def sendBroadcastMessage(self, osdData):
-        nodes = self.racecontext.race.node_pilots
+        nodes = self.rhapi.race.pilots
         for node in nodes:
             if nodes[node]:
-                address = self.racecontext.rhdata.get_pilot_attribute_value(nodes[node], 'mac')
+                address = self.rhapi.db.pilot_attribute_value(nodes[node], MAC_ADDR_OPT_NAME)
                 if address:
                     address = int(address.strip()[:12], 16)
                     self.sendLapMessage(address, osdData)
