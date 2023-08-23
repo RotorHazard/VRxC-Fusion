@@ -23,6 +23,9 @@ def initialize(rhapi):
     ) 
     rhapi.events.on(Evt.VRX_INITIALIZE, controller.registerHandlers)
     rhapi.fields.register_pilot_attribute(UIField(MAC_ADDR_OPT_NAME, "Fusion MAC Address", UIFieldType.TEXT))
+    rhapi.ui.register_panel('vrx_tbs', 'VRX Control: TBS', 'settings')
+    rhapi.fields.register_option(UIField('tbs_comms_port', "Manual Port Override", UIFieldType.TEXT), 'vrx_tbs')
+    rhapi.ui.register_quickbutton('vrx_tbs', 'run_autodetect', "Run Port Assignment", controller.discoverPort, args={'manual':True})
 
 class FusionController(VRxController):
     def __init__(self, rhapi, name, label):
@@ -33,7 +36,7 @@ class FusionController(VRxController):
     def registerHandlers(self, args):
         args['register_fn'](self)
 
-    def discoverPort(self):
+    def discoverPort(self, args):
         # Find port for TBS comms device
         port = self._rhapi.db.option('tbs_comms_port', None)
         if port:
@@ -43,6 +46,7 @@ class FusionController(VRxController):
         else:
             # Automatic port discovery
             logger.debug("Finding serial port for TBS comms device")
+            self.ser.close()
 
             payload = pack(">BBBB", 0x00, 0x01, TBSCommand.IDENTIFY, 0xFF)
 
@@ -61,6 +65,8 @@ class FusionController(VRxController):
                     try:
                         if response.decode()[:10] == "Fusion ESP":
                             logger.info("Found Fusion comms module at {}".format(p.device))
+                            if 'manual' in args:
+                                self._rhapi.ui.message_notify(self._rhapi.__("Found Fusion comms module at {}").format(p.device))
                             self.ready = True
                             return
                     except:
@@ -73,11 +79,13 @@ class FusionController(VRxController):
                 self.ser.close()
 
             logger.warning("No Fusion comms module discovered or configured")
+            if 'manual' in args:
+                self._rhapi.ui.message_notify(self._rhapi.__("No Fusion comms module discovered or configured"))
             self.ready = False
 
     def onStartup(self, _args):
         self.ser.baudrate = 921600
-        self.discoverPort()
+        self.discoverPort({})
 
     def onHeatSet(self, _args):
         if self.ready:
