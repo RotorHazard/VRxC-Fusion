@@ -218,13 +218,13 @@ class FusionController(VRxController):
                 # Pos X Lap X
                 # LAP 0:00.000
 
-                if info.next_rank.split_time:
+                if info.next_rank.diff_time:
                     # pilot in 2nd or self has faster lap
                     # Pos X Lap X
                     # LAP 0:00.000
                     # PX +0:00.000
                     #  Callsign
-                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT)
+                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)
                     osdCrosserData.text3 = ' ' + info.next_rank.callsign
                 elif info.current.is_best_lap and info.current.lap_number:
                     # pilot in 1st, is best lap, 
@@ -242,12 +242,12 @@ class FusionController(VRxController):
                 # Pos X Lap X
                 # LAP 0:00.000
 
-                if info.next_rank.split_time:
+                if info.next_rank.diff_time:
                     # Pos X Lap X
                     # LAP 0:00.000
                     # PX +0:00.000
                     #  Callsign
-                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT)
+                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)
                     osdCrosserData.text3 = ' ' + info.next_rank.callsign
                 else:
                     # Pos X Lap X
@@ -263,7 +263,7 @@ class FusionController(VRxController):
                 self.sendLapMessage(address, osdCrosserData)
 
             # show split when next pilot crosses
-            if info.next_rank.split_time:
+            if info.next_rank.diff_time:
                 if info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE or info.race.win_condition == WinCondition.FASTEST_LAP:
                     # don't update
                     pass
@@ -282,7 +282,7 @@ class FusionController(VRxController):
                         info.next_rank.position,
                         info.next_rank.lap_number,
                         next_rank_lap_prefix + ' ' + RHUtils.time_format(info.next_rank.last_lap_time),
-                        POS_HEADER + str(info.current.position) + ' -' + RHUtils.time_format(info.next_rank.split_time, TIME_FORMAT),
+                        POS_HEADER + str(info.current.position) + ' -' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT),
                         ' ' + info.current.callsign
                     )
 
