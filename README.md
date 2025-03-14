@@ -1,18 +1,16 @@
 # RotorHazard VRx Control for TBS Fusion
 
-This system allows RotorHazard to communicate with TBS Fusion modules, sending race status messages, lap times, and split data in real time to the pilot's OSD. In the future, this system may be extended to provide race directors with module status information, and set pilot's frequency and video transmitter power level from within the RotorHazard interface.
+This system allows RotorHazard to communicate with TBS Fusion modules, sending race status messages, lap times, and split data in real time to the pilot's OSD.
 
 ## Installation and Setup
 
-The system is composed of a RotorHazard plugin and a hardware communicator.
+The system is composed of a RotorHazard plugin and a hardware communicator. Setup of both is required.
 
 ### RotorHazard Plugin
 
 RotorHazard 4.0 or later is required.
 
-Copy the `vrx_tbs` plugin into the `src/server/plugins` directory in your RotorHazard install.
-
-If installation is successful, the RotorHazard log will contain the message `Loaded plugin module vrx_tbs` and `Importing VRx Controller tbs`.
+Install through the "Community Plugins" area within RotorHAzard. Alternately, copy the `vrx_tbs` plugin into the plugins directory of your RotorHazard data directory.
 
 ### Communicator
 
@@ -27,9 +25,9 @@ Flash the code to the ESP32 using the Arduino IDE:
 * Select the proper board and port from the dropdown in the toolbar (Try ESP32 Dev Module if not sure)
 * Select "Upload" (right arrow button) in the toolbar
 
-_The development code contains defines to enable an OLED display and serial debug monitoring. It is not recommended to install support for and enable these features unless you will be working on the code, as they considerably reduce performance of the communications module._
+_The development code contains defines to enable an OLED display and serial debug monitoring. It is not recommended to install support for or enable these features unless you will be working on the code, as they considerably reduce performance of the communications module._
 
-Plug the flashed module into the timer via any USB port and restart RotorHazard. The plugin will automatically detect the connected module on startup. If this step is successful, you will see `Found Fusion comms module at /dev/ttyUSB0` in the log.
+Plug the flashed module into the timer via any USB port and restart RotorHazard. The plugin will automatically detect the connected module on startup. If this step is successful, `Found Fusion comms module at [address]` will appear in the log.
 
 ## Usage
 
@@ -49,7 +47,7 @@ Enable ESPNOW communication on the Fusion Wifi module.
 
 Find your MAC address to give to the race director.
 * Ensure WiFi is ON (`Menu` -> `Settings` -> `WiFi`)
-* Using any WiFi-capable device (phone, laptop), view the available network list. Find the network name beginning with `tbs_fusion_`. 
+* Using any WiFi-capable device, (phone, laptop,) view the available network list. Find the network name beginning with `tbs_fusion_`. 
 * The 12-character code at the end of the network name is the MAC address.
 
 For example, if the network name is `tbs_fusion_ABCDEF123456`, then your MAC Address is `ABCDEF123456`.

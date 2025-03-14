@@ -1,0 +1,15 @@
+name: Validate plugin manifest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Run RHFest validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run RHFest validation
+        uses: docker://ghcr.io/rotorhazard/rhfest-action:latest

@@ -1,0 +1,13 @@
+{
+    "domain": "vrx_tbs",
+    "name": "VRx Control for TBS Fusion",
+    "author": "RotorHazard Team",
+    "author_uri": "https://github.com/RotorHazard/RotorHazard/",
+    "description": "Provides VRx Control and realtime OSD for TBS Fusion receivers",
+    "documentation_uri": "https://github.com/RotorHazard/VRxC-Fusion",
+    "license": "RotorHazard",
+    "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
+    "version": "1.0.1",
+    "required_rhapi_version": "1.0",
+    "category": ["OSD & VRx Control"]
+}
