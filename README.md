@@ -10,7 +10,7 @@ The system is composed of a RotorHazard plugin and a hardware communicator. Setu
 
 RotorHazard 4.0 or later is required.
 
-Install through the "Community Plugins" area within RotorHAzard. Alternately, copy the `vrx_tbs` plugin into the plugins directory of your RotorHazard data directory.
+Install through the "Community Plugins" area within RotorHazard. Alternately, copy the `vrx_tbs` plugin into the plugins directory of your RotorHazard data directory.
 
 ### Communicator
 
@@ -55,3 +55,5 @@ For example, if the network name is `tbs_fusion_ABCDEF123456`, then your MAC Add
 ### For Race Directors
 
 The Fusion plugin will add a `Fusion MAC Address` data field to each pilot in the `Pilots` panel of the `Format` page. For each pilot, fill this field with the 12-character MAC Address provided by the pilot. (Valid hex characters are digits 0–9 and letters a–f).
+
+If you have trouble with automatic detection of the communicator module, you may retry or specify a manual port override in the corresponding panel on the `Settings` page. A restart is not required when setting a manual port.
