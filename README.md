@@ -10,7 +10,7 @@ The system is composed of a RotorHazard plugin and a hardware communicator. Setu
 
 RotorHazard 4.0 or later is required.
 
-Install through the "Community Plugins" area within RotorHazard. Alternately, copy the `vrx_tbs` plugin into the plugins directory of your RotorHazard data directory.
+Install through the "Community Plugins" area within RotorHazard. Alternately, or for earlier versions, copy the `vrx_tbs` directory from inside `custom_plugins` into the plugins directory of your RotorHazard data directory.
 
 ### Communicator
 
