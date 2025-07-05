@@ -23,8 +23,15 @@ def initialize(rhapi):
     ) 
     rhapi.events.on(Evt.VRX_INITIALIZE, controller.registerHandlers)
     rhapi.fields.register_pilot_attribute(UIField(MAC_ADDR_OPT_NAME, "Fusion MAC Address", UIFieldType.TEXT))
+    rhapi.config.register_section('VRX_TBS')
     rhapi.ui.register_panel('vrx_tbs', 'VRX Control: TBS', 'settings')
-    rhapi.fields.register_option(UIField('tbs_comms_port', "Manual Port Override", UIFieldType.TEXT), 'vrx_tbs')
+    rhapi.fields.register_option(
+        UIField(
+            'tbs_comms_port',
+            "Manual Port Override",
+            UIFieldType.TEXT,
+            persistent_section='VRX_TBS',
+        ), 'vrx_tbs')
     rhapi.ui.register_quickbutton('vrx_tbs', 'run_autodetect', "Run Port Assignment", controller.discoverPort, args={'manual':True})
 
 class FusionController(VRxController):
@@ -38,7 +45,7 @@ class FusionController(VRxController):
 
     def discoverPort(self, args):
         # Find port for TBS comms device
-        port = self._rhapi.db.option('tbs_comms_port', None)
+        port = self._rhapi.config.get('VRX_TBS', 'tbs_comms_port')
         if port:
             self.ser.port = port
             logger.info("Using port {} from config for Fusion comms module".format(port))

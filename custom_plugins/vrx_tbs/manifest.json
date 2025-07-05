@@ -8,6 +8,5 @@
     "license": "RotorHazard",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
     "version": "1.0.1",
-    "required_rhapi_version": "1.0",
-    "category": ["OSD & VRx Control"]
+    "required_rhapi_version": "1.3"
 }
