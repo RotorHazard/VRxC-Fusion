@@ -1,8 +1,9 @@
 
 import logging
+import gevent
+from gevent.lock import Semaphore
 import serial
 import serial.tools.list_ports
-import time
 from struct import pack
 from RHRace import WinCondition
 import RHUtils
@@ -14,6 +15,13 @@ from VRxControl import VRxController, VRxDevice, VRxDeviceMethod
 logger = logging.getLogger(__name__)
 
 MAC_ADDR_OPT_NAME = 'comm_tbs_mac'
+PORT_CONFIG_SECTION = 'VRX_TBS'
+PORT_OPTION = 'tbs_comms_port'
+CONNECT_ATTEMPTS = 5
+RETRY_DELAY = 2
+DEVICE_STARTUP_DELAY = 2
+SERIAL_TIMEOUT = 1
+AVOIDED_PORTS = {'/dev/ttyAMA0', '/dev/ttyAMA10', 'COM1'}
 
 def initialize(rhapi):
     controller = FusionController(
@@ -23,76 +31,137 @@ def initialize(rhapi):
     ) 
     rhapi.events.on(Evt.VRX_INITIALIZE, controller.registerHandlers)
     rhapi.fields.register_pilot_attribute(UIField(MAC_ADDR_OPT_NAME, "Fusion MAC Address", UIFieldType.TEXT))
-    rhapi.config.register_section('VRX_TBS')
     rhapi.ui.register_panel('vrx_tbs', 'VRX Control: TBS', 'settings')
-    rhapi.fields.register_option(
-        UIField(
-            'tbs_comms_port',
-            "Manual Port Override",
-            UIFieldType.TEXT,
-            persistent_section='VRX_TBS',
-        ), 'vrx_tbs')
+    port_field = UIField(
+        PORT_OPTION, "Manual Port Override", UIFieldType.TEXT,
+        value=rhapi.db.option(PORT_OPTION, '') or '',
+        desc="Leave empty for automatic detection. Use Run Port Assignment after changing the port.",
+    )
+    # Preserve config.json storage on current RotorHazard, while allowing older
+    # hosts to retain database options. Existing DB values seed new config keys.
+    if hasattr(port_field, 'persistent_section'):
+        rhapi.config.register_section(PORT_CONFIG_SECTION)
+        port_field.persistent_section = PORT_CONFIG_SECTION
+    rhapi.fields.register_option(port_field, 'vrx_tbs')
     rhapi.ui.register_quickbutton('vrx_tbs', 'run_autodetect', "Run Port Assignment", controller.discoverPort, args={'manual':True})
 
 class FusionController(VRxController):
     def __init__(self, rhapi, name, label):
         self._rhapi = rhapi
         self.ser = serial.Serial()
+        self._serial_lock = Semaphore()
+        self._discovering = False
+        self._discovery = None
+        self._shutting_down = False
         super().__init__(name, label)
+        # The base controller's setup() marks controllers ready by default.
+        self.ready = False
 
     def registerHandlers(self, args):
         args['register_fn'](self)
 
-    def discoverPort(self, args):
-        # Find port for TBS comms device
-        port = self._rhapi.config.get('VRX_TBS', 'tbs_comms_port')
-        if port:
-            self.ser.port = port
-            logger.info("Using port {} from config for Fusion comms module".format(port))
+    def _configured_port(self):
+        port = None
+        if hasattr(UIField, 'persistent_section'):
+            port = self._rhapi.config.get(PORT_CONFIG_SECTION, PORT_OPTION)
+        if port is None or port is False:
+            port = self._rhapi.db.option(PORT_OPTION, '')
+        return (port or '').strip()
+
+    def discoverPort(self, args=None):
+        manual = bool((args or {}).get('manual'))
+        if self._shutting_down:
             return
-        else:
-            # Automatic port discovery
-            logger.debug("Finding serial port for TBS comms device")
+        if self._discovering:
+            if manual:
+                self._rhapi.ui.message_notify(self._rhapi.__("Fusion port assignment already in progress"))
+            return self._discovery
+
+        port = self._configured_port()
+        # Set the guard before spawning so startup and button requests cannot race.
+        self._discovering = True
+        self.ready = False
+        self._discovery = gevent.spawn(self._discover_port, port)
+        return self._discovery
+
+    def _close_serial(self):
+        self.ready = False
+        try:
             self.ser.close()
+        except (OSError, serial.SerialException):
+            logger.exception("Unable to close Fusion serial port")
 
+    def _probe_port(self, port):
+        self._close_serial()
+        try:
+            self.ser.port = port
+            self.ser.baudrate = 921600
+            self.ser.timeout = SERIAL_TIMEOUT
+            self.ser.write_timeout = SERIAL_TIMEOUT
+            self.ser.open()
+            gevent.sleep(DEVICE_STARTUP_DELAY)
+            self.ser.reset_input_buffer()
             payload = pack(">BBBB", 0x00, 0x01, TBSCommand.IDENTIFY, 0xFF)
+            if self.ser.write(payload) != len(payload):
+                raise serial.SerialException("Incomplete Fusion identification request")
+            response = self.ser.read(10)
+            if response == b"Fusion ESP":
+                self.ready = True
+                logger.info("Found Fusion comms module at %s", port)
+                return True
+            logger.warning("No Fusion identity response from %s (got %r)", port, response)
+        except (OSError, serial.SerialException) as exc:
+            logger.warning("Unable to identify Fusion comms module at %s: %s", port, exc)
+        finally:
+            if not self.ready:
+                self._close_serial()
+        return False
 
-            ports = list(serial.tools.list_ports.comports())
-            self.ser.timeout = 1
+    def _discover_port(self, configured_port):
+        try:
+            with self._serial_lock:
+                self._close_serial()
+                if configured_port:
+                    ports = [configured_port]
+                    attempts = CONNECT_ATTEMPTS
+                else:
+                    ports = sorted({p.device for p in serial.tools.list_ports.comports()}
+                                   - AVOIDED_PORTS)
+                    attempts = 1
 
-            for p in ports:
-                try:
-                    response = None
-                    self.ser.port = p.device
-                    self.ser.open()
-                    time.sleep(2)
-                    self.ser.reset_input_buffer()
-                    self.ser.write(payload)
-                    response = self.ser.read(10)
-                    try:
-                        if response.decode()[:10] == "Fusion ESP":
-                            logger.info("Found Fusion comms module at {}".format(p.device))
-                            if 'manual' in args:
-                                self._rhapi.ui.message_notify(self._rhapi.__("Found Fusion comms module at {}").format(p.device))
-                            self.ready = True
+                for attempt in range(attempts):
+                    for port in ports:
+                        if self._probe_port(port):
+                            self._rhapi.ui.message_notify(
+                                self._rhapi.__("Fusion connected at {}").format(port))
                             return
-                    except:
-                        pass
-                except serial.serialutil.SerialException:
-                    pass
+                    if attempt + 1 < attempts:
+                        logger.info("Retrying Fusion at %s (attempt %s/%s)",
+                                    configured_port, attempt + 2, attempts)
+                        gevent.sleep(RETRY_DELAY)
 
-                logger.debug("No Fusion comms module at {} (got {})".format(p.device, response))
-
-                self.ser.close()
-
-            logger.warning("No Fusion comms module discovered or configured")
-            if 'manual' in args:
-                self._rhapi.ui.message_notify(self._rhapi.__("No Fusion comms module discovered or configured"))
-            self.ready = False
+                logger.warning("No Fusion comms module found after %s attempt(s)", attempts)
+                self._rhapi.ui.message_notify(self._rhapi.__(
+                    "Failed to connect to Fusion; check the device and use Run Port Assignment to retry"))
+        except Exception:
+            self._close_serial()
+            logger.exception("Fusion port assignment failed")
+            self._rhapi.ui.message_notify(self._rhapi.__("Failed to connect to Fusion; see server log"))
+        finally:
+            self._discovering = False
+            self._discovery = None
 
     def onStartup(self, _args):
-        self.ser.baudrate = 921600
         self.discoverPort({})
+
+    def onShutdown(self, _args):
+        self._shutting_down = True
+        if self._discovery is not None:
+            self._discovery.kill()
+        with self._serial_lock:
+            self._close_serial()
+        self._discovering = False
+        self._discovery = None
 
     def onHeatSet(self, _args):
         if self.ready:
@@ -326,6 +395,8 @@ class FusionController(VRxController):
                     self.sendLapMessage(address, osdData)
 
     def sendLapMessage(self, address, osdData):
+        if not self.ready or self._discovering or self._shutting_down:
+            return
         addr = address.to_bytes(6, 'big')
 
         try:
@@ -346,14 +417,18 @@ class FusionController(VRxController):
 
         payload = pack(">BB {}s B".format(len(data)), 0x00, len(data), data, 0xFF)
 
-        try:
-            if(self.ser.isOpen() == False):
-                self.ser.open()
-            self.ser.write(payload)
-            logger.debug('VRxC Fusion message: {}\n{}'.format(hex(address), osdData))
-        except Exception as ex:
-            logger.info("Unable to send Fusion data: {}".format(ex))
-            self.ser.close()
+        with self._serial_lock:
+            if not self.ready or self._discovering or self._shutting_down:
+                return
+            try:
+                if self.ser.write(payload) != len(payload):
+                    raise serial.SerialException("Incomplete Fusion message")
+                logger.debug('VRxC Fusion message: {}\n{}'.format(hex(address), osdData))
+            except (OSError, serial.SerialException) as ex:
+                logger.warning("Unable to send Fusion data on %s: %s", self.ser.port, ex)
+                self._close_serial()
+                self._rhapi.ui.message_notify(self._rhapi.__(
+                    "Fusion connection lost; use Run Port Assignment to reconnect"))
 
 
 class TBSCommand():
