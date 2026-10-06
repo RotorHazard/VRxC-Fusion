@@ -56,4 +56,46 @@ For example, if the network name is `tbs_fusion_ABCDEF123456`, then your MAC Add
 
 The Fusion plugin will add a `Fusion MAC Address` data field to each pilot in the `Pilots` panel of the `Format` page. For each pilot, fill this field with the 12-character MAC Address provided by the pilot. (Valid hex characters are digits 0–9 and letters a–f).
 
-If you have trouble with automatic detection of the communicator module, you may retry or specify a manual port override in the corresponding panel on the `Settings` page. A restart is not required when setting a manual port.
+If you have trouble with automatic detection of the communicator module, enter a
+**Manual Port Override** in the Fusion panel on the `Settings` page and click
+**Run Port Assignment**. A restart is not required. For example, a Linux path
+such as `/dev/serial/by-path/platform-3f980000.usb-usb-0:1.1.2:1.0-port0`
+identifies a physical USB port; keep the Fusion communicator in that port.
+Confirm the path belongs to Fusion, especially when an ELRS backpack is also
+connected.
+
+A configured path is used exclusively. Fusion opens it at 921600 baud and
+checks for the communicator's identity response before reporting ready. If the
+device is not available or does not respond, the plugin makes up to five
+attempts with two seconds between failures. Each probe also allows two seconds
+for device startup, with one-second read and write timeouts. Connection attempts
+run in the background; repeated button clicks do not start overlapping scans.
+
+Leave the override empty for one automatic scan. Automatic detection skips
+`/dev/ttyAMA0`, `/dev/ttyAMA10`, and `COM1`; it does not repeatedly probe every
+serial device. Use distinct explicit paths for Fusion and ELRS to avoid both
+plugins scanning the same devices.
+
+Startup and manual attempts show **Fusion connected at ...** or **Failed to
+connect to Fusion ...** notifications. Individual retries are recorded in the
+server log. A serial send failure clears the ready state, closes the port, and
+shows **Fusion connection lost ...** once. After reconnecting the hardware,
+click **Run Port Assignment** to reconnect; there is no continuous hotplug
+monitor or automatic replay of missed OSD messages.
+
+On RotorHazard versions supporting persistent settings, the port is stored in
+`config.json` under `VRX_TBS.tbs_comms_port`. An existing value is preserved;
+when the key is first created, an older database port setting supplies its
+default. Older hosts retain database storage. Clearing a persistent override
+selects automatic detection even if the old database value still exists.
+
+## Development tests
+
+With `pytest`, `gevent`, and `pyserial` installed, run:
+
+```sh
+python -m pytest tests
+```
+
+The tests simulate serial hardware and exercise actual background greenlets;
+physical cold-start and OSD checks are still needed before deployment.
