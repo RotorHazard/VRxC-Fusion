@@ -5,7 +5,6 @@ import serial.tools.list_ports
 import time
 from struct import pack
 from RHRace import WinCondition
-import RHUtils
 import Results
 from eventmanager import Evt
 from RHUI import UIField, UIFieldType
@@ -103,8 +102,6 @@ class FusionController(VRxController):
                     pilot = self._rhapi.db.pilot_by_id(seat_pilots[seat])
                     address = self._rhapi.db.pilot_attribute_value(seat_pilots[seat], MAC_ADDR_OPT_NAME)
                     if address:
-                        address = int(address.strip()[:12], 16)
-
                         if heat:
                             round_num = self._rhapi.db.heat_max_round(self._rhapi.race.heat) or 0
                             osdData = OSDData(0, 0, 
@@ -130,8 +127,6 @@ class FusionController(VRxController):
                     pilot = self._rhapi.db.pilot_by_id(seat_pilots[seat])
                     address = self._rhapi.db.pilot_attribute_value(seat_pilots[seat], MAC_ADDR_OPT_NAME)
                     if address:
-                        address = int(address.strip()[:12], 16)
-
                         osdData = OSDData(0, 0,
                             pilot.display_callsign,
                             '', 
@@ -180,7 +175,7 @@ class FusionController(VRxController):
                 info = Results.get_gap_info(self.racecontext, args['node_index'])
 
             # Set up output objects
-            TIME_FORMAT = self._rhapi.db.option('timeFormat')
+            TIME_FORMAT = self._rhapi.config.get_item('UI', 'timeFormat')
             LAP_HEADER = '{:<3}'.format(self._rhapi.db.option('osd_lapHeader', "LAP"))
             PREVIOUS_LAP_HEADER = '{:<3}'.format(self._rhapi.db.option('osd_previousLapHeader', "PRV"))
             POS_HEADER = '{:<1}'.format(self._rhapi.db.option('osd_positionHeader', "P"))
@@ -205,7 +200,7 @@ class FusionController(VRxController):
             osdCrosserData = OSDData(
                 info.current.position,
                 info.current.lap_number,
-                lap_prefix + ' ' + RHUtils.time_format(info.current.last_lap_time, TIME_FORMAT),
+                lap_prefix + ' ' + self._rhapi.utils.format_time_to_str(info.current.last_lap_time, TIME_FORMAT),
                 '',
                 '',
             )
@@ -218,8 +213,8 @@ class FusionController(VRxController):
                     # LAP 0:00.000
                     # PRV 0:00.000
                     # X/  0:00.000
-                    osdCrosserData.text2 = PREVIOUS_LAP_HEADER + ' ' + RHUtils.time_format(info.current.lap_list[-2]['lap_raw'], TIME_FORMAT)
-                    osdCrosserData.text3 = str(info.current.consecutives_base) + '/  ' + RHUtils.time_format(info.current.consecutives, TIME_FORMAT)
+                    osdCrosserData.text2 = PREVIOUS_LAP_HEADER + ' ' + self._rhapi.utils.format_time_to_str(info.current.lap_list[-2]['lap_raw'], TIME_FORMAT)
+                    osdCrosserData.text3 = str(info.current.consecutives_base) + '/  ' + self._rhapi.utils.format_time_to_str(info.current.consecutives, TIME_FORMAT)
 
             elif info.race.win_condition == WinCondition.FASTEST_LAP:
                 # Pos X Lap X
@@ -231,7 +226,7 @@ class FusionController(VRxController):
                     # LAP 0:00.000
                     # PX +0:00.000
                     #  Callsign
-                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)
+                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + self._rhapi.utils.format_time_to_str(info.next_rank.diff_time, TIME_FORMAT)
                     osdCrosserData.text3 = ' ' + info.next_rank.callsign
                 elif info.current.is_best_lap and info.current.lap_number:
                     # pilot in 1st, is best lap, 
@@ -254,7 +249,7 @@ class FusionController(VRxController):
                     # LAP 0:00.000
                     # PX +0:00.000
                     #  Callsign
-                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT)
+                    osdCrosserData.text2 = POS_HEADER + str(info.next_rank.position) + ' +' + self._rhapi.utils.format_time_to_str(info.next_rank.diff_time, TIME_FORMAT)
                     osdCrosserData.text3 = ' ' + info.next_rank.callsign
                 else:
                     # Pos X Lap X
@@ -266,7 +261,6 @@ class FusionController(VRxController):
             # send message to crosser
             address = self._rhapi.db.pilot_attribute_value(info.current.pilot_id, MAC_ADDR_OPT_NAME)
             if address:
-                address = int(address.strip()[:12], 16)
                 self.sendLapMessage(address, osdCrosserData)
 
             # show split when next pilot crosses
@@ -288,14 +282,13 @@ class FusionController(VRxController):
                     osdSplitData = OSDData(
                         info.next_rank.position,
                         info.next_rank.lap_number,
-                        next_rank_lap_prefix + ' ' + RHUtils.time_format(info.next_rank.last_lap_time),
-                        POS_HEADER + str(info.current.position) + ' -' + RHUtils.time_format(info.next_rank.diff_time, TIME_FORMAT),
+                        next_rank_lap_prefix + ' ' + self._rhapi.utils.format_time_to_str(info.next_rank.last_lap_time),
+                        POS_HEADER + str(info.current.position) + ' -' + self._rhapi.utils.format_time_to_str(info.next_rank.diff_time, TIME_FORMAT),
                         ' ' + info.current.callsign
                     )
 
                     address = self._rhapi.db.pilot_attribute_value(info.next_rank.pilot_id, MAC_ADDR_OPT_NAME)
                     if address:
-                        address = int(address.strip()[:12], 16)
                         self.sendLapMessage(address, osdSplitData)
 
     def onLapsClear(self, _args):
@@ -322,10 +315,10 @@ class FusionController(VRxController):
             if nodes[node]:
                 address = self._rhapi.db.pilot_attribute_value(nodes[node], MAC_ADDR_OPT_NAME)
                 if address:
-                    address = int(address.strip()[:12], 16)
                     self.sendLapMessage(address, osdData)
 
     def sendLapMessage(self, address, osdData):
+        address = int(address.strip().replace(":", ""), 16) # Convert text mac string to int, removing ':' separator if present
         addr = address.to_bytes(6, 'big')
 
         try:
